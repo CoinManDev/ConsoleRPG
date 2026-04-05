@@ -1,11 +1,10 @@
-#include <algorithm>
+/*#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <functional>
 #include <iostream>
 #include <memory>
-#include <string>
 #include <vector>
 #include <conio.h>
 
@@ -60,8 +59,6 @@ namespace Aesthetics
 	static_assert(colors.size() == max_colors);
 
 	constexpr Color bgColor{ green_bg };
-
-	constexpr const char* clear{ "\033[H\033[2J" };
 }
 
 std::ostream& operator<<(std::ostream& out, Aesthetics::Color color)
@@ -123,81 +120,20 @@ int sign(int n)
 	return (n / std::abs(n));
 }
 
-class Entity;
+template <int width, int height>
+class Map;
 
-class Map
-{
-private:
-	std::vector<std::vector<std::vector<Entity*>>> mEntityMap{};
-	const int mWidth{};
-	const int mHeight{};
-
-	std::vector<Entity*>& getEntitySlot(const Point& position)
-	{
-		return mEntityMap[static_cast<std::size_t>(position.y)][static_cast<std::size_t>(position.x)];
-	}
-
-	void addEntity(const Point& position, Entity* entity)
-	{
-		getEntitySlot(position).push_back(entity);
-	}
-
-	void removeEntity(const Point& position, Entity* entity)
-	{
-		std::erase(getEntitySlot(position), entity); // removes ALL instances of entity
-	}
-
-	friend Entity;
-
-public:
-	Map(int width, int height)
-		: mWidth{ width }, mHeight{ height }
-	{
-		assert((width >= 0 && height >= 0) && "Map dimensions smaller than zero");
-
-		mEntityMap.resize(static_cast<std::size_t>(height));
-		for (auto& row : mEntityMap)
-			row.resize(static_cast<std::size_t>(width));
-	}
-
-	Map(const Map& other) = delete;
-	Map& operator=(const Map& other) = delete;
-
-	int getWidth() const { return mWidth; }
-	int getHeight() const { return mHeight; }
-
-	Entity* getEntityAtSlot(const std::vector<Entity*>& slot) const;
-
-	Entity* getEntity(const Point& position)
-	{
-		if (!isPositionInBounds(position))
-			return nullptr;
-
-		return getEntityAtSlot(getEntitySlot(position));
-	}
-
-	bool isPositionInBounds(const Point& position) const
-	{
-		return (position.x >= 0 && position.x < mWidth) &&
-			(position.y >= 0 && position.y < mHeight);
-	}
-
-	friend std::ostream& operator<<(std::ostream& out, const Map& map);
-};
-
+template <int width, int height>
 class Entity
 {
 private:
-	Map& mMap;
+	Map<width, height>& mMap;
 	Point mPosition{};
 	char mSymbol{};
 	Aesthetics::Color mColor{};
-	bool active{ true };
-
-	void removeFromMap() { mMap.removeEntity(mPosition, this); }
 
 public:
-	Entity(Map& map, const Point& position, char symbol, Aesthetics::Color color = Aesthetics::white)
+	Entity(Map<width, height>& map, const Point& position, char symbol, Aesthetics::Color color = Aesthetics::white)
 		: mMap{ map }, mPosition{ position }, mSymbol{ symbol }, mColor{ color }
 	{
 		mMap.addEntity(mPosition, this);
@@ -205,7 +141,7 @@ public:
 
 	virtual ~Entity()
 	{
-		removeFromMap();
+		mMap.removeEntity(mPosition, this);
 	}
 
 	Entity(const Entity& other)
@@ -214,6 +150,16 @@ public:
 
 	}
 
+	//Entity& operator=(const Entity& other)
+	//{
+	//	if (this == &other)
+	//		return *this;
+	//	
+	//	moveTo(other.mPosition);
+	//	mSymbol = other.mSymbol;
+	//
+	//	return *this;
+	//}
 	Entity& operator=(const Entity& other) = delete;
 
 	const Point& getPosition() const { return mPosition; }
@@ -225,16 +171,12 @@ public:
 		return std::make_unique<Entity>(*this);
 	}
 
-	bool isActive() const { return active; }
-	void activate() { active = true; }
-	void deactivate() { active = false; }
-
 	void moveTo(const Point& to)
 	{
 		if (!mMap.isPositionInBounds(to))
 			return;
 
-		removeFromMap(); // remove first to account for the scenario when mPosition and to is same ( if we added first removeEntity would remove the instance just added as well )
+		mMap.removeEntity(mPosition, this); // remove first to account for the scenario when mPosition and to is same ( if we added first removeEntity would remove the instance just added as well )
 		mMap.addEntity(to, this);
 		mPosition = to;
 	}
@@ -247,33 +189,75 @@ public:
 	}
 };
 
-Entity* Map::getEntityAtSlot(const std::vector<Entity*>& slot) const
-{
-	for (auto* entity : slot)
-		if (entity->isActive())
-			return entity;
+//template <int width, int height>
+//Entity( Map<width, height>&map, const Point& position, char symbol ) -> Entity<width, height>;
 
-	return nullptr;
-}
-
-std::ostream& operator<<(std::ostream& out, const Map& map)
+template <int width, int height>
+class Map
 {
-	for (const auto& row : map.mEntityMap)
+private:
+	std::array<std::array<std::vector<Entity<width, height>*>, width>, height> mEntityMap{};
+
+	std::vector<Entity<width, height>*>& getEntitySlot(const Point& position)
 	{
-		for (const auto& slot : row)
-		{
-			Entity* entity{ map.getEntityAtSlot(slot) };
-			if (entity)
-				out << *entity << ' ' << Aesthetics::reset_color;
-			else
-				out << Aesthetics::bgColor << "  " << Aesthetics::reset_color;
-		}
-
-		out << '\n';
+		return mEntityMap[static_cast<std::size_t>(position.y)][static_cast<std::size_t>(position.x)];
 	}
 
-	return out;
-}
+	void addEntity(const Point& position, Entity<width, height>* entity)
+	{
+		getEntitySlot(position).push_back(entity);
+	}
+
+	void removeEntity(const Point& position, Entity<width, height>* entity)
+	{
+		std::erase(getEntitySlot(position), entity); // removes ALL instances of entity
+	}
+
+	friend Entity<width, height>;
+
+public:
+	Map() = default;
+
+	Map(const Map& other) = delete;
+	Map& operator=(const Map& other) = delete;
+
+	//const Entity<width, height>* getEntity(const Point& position)
+	Entity<width, height>* getEntity(const Point& position)
+	{
+		if (!isPositionInBounds(position))
+			return nullptr;
+
+		const auto& slot{ getEntitySlot(position) };
+		if (slot.empty())
+			return nullptr;
+		else
+			return slot[0];
+	}
+
+	bool isPositionInBounds(const Point& position)
+	{
+		return (position.x >= 0 && position.x < width) &&
+			   (position.y >= 0 && position.y < height);
+	}
+
+	friend std::ostream& operator<<(std::ostream& out, const Map& map)
+	{
+		for (const auto& row : map.mEntityMap)
+		{
+			for (const auto& slot : row)
+			{
+				if (!slot.empty())
+					out << *slot[0] << ' ' << Aesthetics::reset_color;
+				else
+					out << Aesthetics::bgColor << "  " << Aesthetics::reset_color;
+			}
+
+			out << '\n';
+		}
+
+		return out;
+	}
+};
 
 class CreatureBase
 {
@@ -297,8 +281,6 @@ public:
 
 	int getDamage() const { return mDamage; }
 	void setDamage(int damage) { mDamage = damage; }
-
-	bool isDead() const { return mHealth <= 0; }
 };
 
 class Effect
@@ -332,22 +314,17 @@ public:
 	}
 };
 
-class Creature : public Entity, public CreatureBase
+template <int width, int height>
+class Creature : public Entity<width, height>, public CreatureBase
 {
 public:
-	Creature(Map& map, const Point& position, char symbol, Aesthetics::Color color, int health, int damage)
-		: Entity{ map, position, symbol, color }, CreatureBase{ health, damage }
+	Creature(Map<width, height>& map, const Point& position, char symbol, Aesthetics::Color color, int health, int damage)
+		: Entity<width, height>{ map, position, symbol, color }, CreatureBase{ health, damage }
 	{
 
 	}
 
-	Creature(Map& map, const Point& position, char symbol, Aesthetics::Color color, CreatureBase base)
-		: Entity{ map, position, symbol, color }, CreatureBase{ base }
-	{
-
-	}
-
-	std::unique_ptr<Entity> clone() const override
+	std::unique_ptr<Entity<width, height>> clone() const override
 	{
 		return std::make_unique<Creature>(*this);
 	}
@@ -400,6 +377,7 @@ public:
 	}
 
 	const char* getName() const override { return names[mType]; }
+	//int getDamage() const { return damages[mType].getModification().getDamage(); }
 	const Effect& getEffect() const override { return damages[mType]; }
 };
 
@@ -416,10 +394,13 @@ public:
 		max_types,
 	};
 
-	inline static constexpr std::array names{ "potion of healing", "potion of pain and suffering", "potion of strength", "potion of weakness" };
+	inline static constexpr std::array names{ "potion of healing", "potion of pain and suffering", "potion of strength", "potion of weakness"};
 	static_assert(names.size() == max_types);
 
 	inline static const std::array effects{
+		//std::function<void(CreatureBase&)>{ [](auto& c) { c.setHealth(c.getHealth() + 5); } },
+		//std::function<void(CreatureBase&)>{ [](auto& c) { c.setHealth(c.getHealth() - 5); } },
+		//std::function<void(CreatureBase&)>{ [](auto& c) { c.setDamage(c.getDamage() - 2); } },
 		Effect::modifiedHealth(5),
 		Effect::modifiedHealth(-5),
 		Effect::modifiedDamage(2),
@@ -438,6 +419,7 @@ public:
 	}
 
 	const char* getName() const override { return names[mType]; }
+	//const std::function<void(CreatureBase&)>& getEffect() const { return effects[mType]; }
 	const Effect& getEffect() const override { return effects[mType]; }
 };
 
@@ -479,19 +461,20 @@ public:
 	const Effect& getEffect() const override { return heals[mType]; }
 };
 
-class Player : public Creature
+template <int width, int height>
+class Player : public Creature<width, height>
 {
 private:
 	Item* mItem{};
 
 public:
-	Player(Map& map, const Point& position)
-		: Creature{ map, position, 'P', Aesthetics::yellow, 10, 1 }
+	Player(Map<width, height>& map, const Point& position)
+		: Creature<width, height>{ map, position, 'P', Aesthetics::yellow, 10, 1 }
 	{
 
 	}
 
-	std::unique_ptr<Entity> clone() const override
+	std::unique_ptr<Entity<width, height>> clone() const override
 	{
 		return std::make_unique<Player>(*this);
 	}
@@ -500,71 +483,47 @@ public:
 	void setItem(Item& item) { mItem = &item; }
 };
 
-using namespace std::string_literals;
-
-class Enemy : public Creature
+template <int width, int height>
+class Enemy : public Creature<width, height>
 {
 public:
-	enum Type
-	{
-		goblin,
-		wizard,
-		knight,
-
-		max_types,
-	};
-
-	inline static const std::array names{ "goblin"s, "wizard"s, "knight"s };
-	static_assert(names.size() == max_types);
-
-	constexpr static std::array symbols{ 'G', 'W', 'K' };
-	static_assert(symbols.size() == max_types);
-
-	inline static const std::array stats{ CreatureBase{ 5, 1 }, CreatureBase{ 10, 2 }, CreatureBase{ 20, 4 } };
-	static_assert(stats.size() == max_types);
-
-private:
-	Type mType{};
-	std::string mName{};
-
-public:
-	Enemy(Map& map, const Point& position, Type type)
-		: mType{ type }, mName{ names[type] }, Creature{ map, position, symbols[type], Aesthetics::red, stats[type] }
+	Enemy(Map<width, height>& map, const Point& position)
+		: Creature<width, height>{ map, position, 'e', Aesthetics::red, 10, 1 }
 	{
 
 	}
 
-	std::unique_ptr<Entity> clone() const override
+	std::unique_ptr<Entity<width, height>> clone() const override
 	{
 		return std::make_unique<Enemy>(*this);
 	}
-
-	const std::string& getName() const { return mName; }
 };
 
-class Wall : public Entity
+template <int width, int height>
+class Wall : public Entity<width, height>
 {
 public:
-	Wall(Map& map, const Point& position)
-		: Entity{ map, position, '#', Aesthetics::magenta }
+	Wall(Map<width, height>& map, const Point& position)
+		: Entity<width, height>{ map, position, '#', Aesthetics::magenta }
 	{
 
 	}
 
-	std::unique_ptr<Entity> clone() const override
+	std::unique_ptr<Entity<width, height>> clone() const override
 	{
 		return std::make_unique<Wall>(*this);
 	}
 };
 
+template <int width, int height>
 class Block
 {
 private:
-	std::vector<std::vector<std::unique_ptr<Entity>>> mBlock{};
+	std::vector<std::vector<std::unique_ptr<Entity<width, height>>>> mBlock{};
 	Point mStart{};
 
 public:
-	Block(const Entity& sample, const Point& start, const Point& end, const Point& gap = {})
+	Block(const Entity<width, height>& sample, const Point& start, const Point& end, const Point& gap = {})
 		: mStart{ start }
 	{
 		Point distAbs{ distanceAbs(start, end) };
@@ -584,8 +543,17 @@ public:
 		}
 	}
 
-	Entity& getEntity(const Point& position)
+	Entity<width, height>& getEntity(const Point& position)
 	{
+		//const auto ptr{std::find_if(mBlock.begin(), mBlock.end(), [position](const auto& ptr) {
+		//	if (ptr)
+		//		return ptr->getPosition() == position;
+		//	else
+		//		return false;
+		//	}) };
+		//assert(ptr != mBlock.end() && "Couldn't find entity in block");
+		//
+		//return **ptr;
 		Point distAbs{ distanceAbs(position, mStart) };
 		auto& ptr{ mBlock[static_cast<std::size_t>(distAbs.y)][static_cast<std::size_t>(distAbs.x)] };
 		assert(ptr && "Couldn't find entity in block");
@@ -595,58 +563,6 @@ public:
 	}
 };
 
-void displayFight(const Player& player, const Enemy& enemy)
-{
-	int enemyHealth{ enemy.getHealth() < 0 ? 0 : enemy.getHealth() };
-	int playerHealth{ player.getHealth() < 0 ? 0 : player.getHealth() };
-
-	std::cout << "\t" << enemy.getSymbol() << "\t\t" << player.getSymbol() << "\t\n\n";
-	std::cout << "\t" << "hp: " << enemyHealth << "\t\t" << "hp: " << playerHealth << "\t\n\n";
-}
-
-void fight(Player& player, Enemy& enemy)
-{
-	std::cout << Aesthetics::clear << '\n';
-	displayFight(player, enemy);
-
-	std::cout << "A fight has started between you and the " << enemy.getName() << '\n';
-	
-	while (true)
-	{
-		std::cout << "Press 'y' to attack: ";
-		char c{};
-		std::cin >> c;
-
-		std::cout << Aesthetics::clear << '\n';
-		displayFight(player, enemy);
-
-		if (c == 'y')
-		{
-			player.getItem()->useOn(enemy);
-			if (!enemy.isDead())
-				player.setHealth(player.getHealth() - enemy.getDamage());
-
-			std::cout << Aesthetics::clear << '\n';
-			displayFight(player, enemy);
-
-			std::cout << "You dealt " << player.getItem()->getEffect().getModification().getHealth() * -1 << " damage to the " << enemy.getName() << '\n';
-			if (enemy.isDead())
-			{
-				std::cout << "They are now just a soulless husk\n";
-				break;
-			}
-			else
-				std::cout << "They now have " << enemy.getHealth() << " health left\n";
-
-			std::cout << "They dealt " << enemy.getDamage() << " damage to you\n";
-			if (player.isDead())
-				break;
-			else
-				std::cout << "You now have " << player.getHealth() << " health left\n";
-		}
-	}
-}
-
 char getInput()
 {
 	return static_cast<char>(_getch());
@@ -654,7 +570,7 @@ char getInput()
 
 int main()
 {
-	Map map{ 10, 10 };
+	Map<10, 10> map{};
 
 	std::cout << map << '\n';
 
@@ -669,14 +585,14 @@ int main()
 	p.moveTo(p.getPosition() + Directions::down);
 
 	std::cout << map << '\n';
-
+	
 	//Entity e2{ e };
 	//e2.moveTo(Point{ 3, 3 });
 
 	//std::cout << map << '\n';
 
 	//WallBlock block{ map, Point{ 1, 7 }, Point{ 2, 8 } };
-	Block block{ Wall{ map, Point{} }, Point{2, 8}, Point{1, 7} };
+	Block block{ Wall{ map, Point{} }, Point{2, 8}, Point{1, 7}};
 	Block block2{ Wall{ map, Point{} }, Point{ 6, 6 }, Point{ 3, 8 } };
 	Block block3{ Wall{ map, Point{} }, Point{ 8, 0 }, Point{ 9, 1 } };
 
@@ -684,7 +600,7 @@ int main()
 	e.move(Directions::left);
 
 	std::cout << map << '\n';
-
+	
 	//e2 = p;
 
 	//std::cout << map << '\n';
@@ -693,7 +609,7 @@ int main()
 
 	std::cout << map << '\n';
 
-	Map map2{ 20, 20 };
+	Map<20, 20> map2{};
 
 	Block block5{ Entity{ map2, Point{}, 'E' }, Point{ 0, 0 }, Point{ 10, 10 }, Point{ 1, 1 } };
 
@@ -707,16 +623,16 @@ int main()
 	//std::cout << block6.getEntity(Point{ 2, 2 }).getPosition() << '\n'; SHOULD ASSERT OUT
 	//std::cout << block6.getEntity(Point{ -1, -1 }).getPosition() << '\n'; SHOULD ASSERT OUT
 
-	Enemy enemy{ map, Point{ 0, 7 }, Enemy::goblin };
+	Enemy enemy{ map, Point{ 0, 7 } };
 
 	Weapon weapon{ Weapon::sword };
 	p.setItem(weapon);
 
-	while (!p.isDead())
+	while (true)
 	{
 		std::cout << "Enter a direction: ";
 		char c{ getInput() };
-		std::cout << Aesthetics::clear << '\n';
+		std::cout << "\033[H\033[2J" << '\n';
 		//for (int i{}; i < 20; ++i)
 		//	std::cout << '\n';
 
@@ -729,22 +645,19 @@ int main()
 		case 'd': dir = Directions::right; break;
 		}
 
-		Entity* entity{ map.getEntity(p.getPosition() + dir) };
+		auto* entity{ map.getEntity(p.getPosition() + dir) };
 		if (!entity)
 			p.move(dir);
-		else if (Enemy* opponent{ dynamic_cast<Enemy*>(entity) })
+		else if (entity->getSymbol() == 'e')
 		{
-			std::cout << map << '\n';
-			fight(p, *opponent);
+			CreatureBase* creature{ dynamic_cast<Enemy<10, 10>*>(entity) };
+			p.getItem()->useOn(*creature);
 
-			if (opponent->isDead())
-				opponent->deactivate();
+			std::cout << "Enemy has " << creature->getHealth() << " health left.\n";
 		}
 
 		std::cout << map << '\n';
 	}
 
-	std::cout << "You lost\n";
-
 	return 0;
-}
+}*/
