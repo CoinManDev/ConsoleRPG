@@ -3,9 +3,11 @@
 #include <cassert>
 #include <cmath>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <conio.h>
 
@@ -315,6 +317,9 @@ public:
 
 	const CreatureBase& getModification() const { return mModification; }
 
+	int getModifiedHealth() const { return mModification.getHealth(); }
+	int getModifiedDamage() const { return mModification.getDamage(); }
+
 	void applyOn(CreatureBase& victim) const
 	{
 		victim.setHealth(victim.getHealth() + mModification.getHealth());
@@ -359,7 +364,7 @@ public:
 	virtual const char* getName() const = 0;
 	virtual const Effect& getEffect() const = 0;
 
-	void useOn(CreatureBase& on)
+	void useOn(CreatureBase& on) const
 	{
 		getEffect().applyOn(on);
 	}
@@ -393,6 +398,8 @@ private:
 	Type mType{};
 
 public:
+	Weapon() = default;
+
 	Weapon(Type type)
 		: mType{ type }
 	{
@@ -431,6 +438,8 @@ private:
 	Type mType{};
 
 public:
+	Potion() = default;
+
 	Potion(Type type)
 		: mType{ type }
 	{
@@ -469,6 +478,8 @@ private:
 	Type mType{};
 
 public:
+	Food() = default;
+
 	Food(Type type)
 		: mType{ type }
 	{
@@ -482,7 +493,10 @@ public:
 class Player : public Creature
 {
 private:
-	Item* mItem{};
+	std::vector<Weapon> mWeapons{};
+	std::vector<Potion> mPotions{};
+	std::vector<Food> mFood{};
+	Weapon* mWeapon{};
 
 public:
 	Player(Map& map, const Point& position)
@@ -496,8 +510,22 @@ public:
 		return std::make_unique<Player>(*this);
 	}
 
-	Item* getItem() { return mItem; }
-	void setItem(Item& item) { mItem = &item; }
+	const std::vector<Weapon>& getWeapons() { return mWeapons; }
+	const std::vector<Potion>& getPotions() { return mPotions; }
+	const std::vector<Food>& getFood() { return mFood; }
+
+	const Weapon& getWeapon() const { return *mWeapon; }
+	void setWeapon(Weapon& weapon) { mWeapon = &weapon; }
+
+	void addItem(const Item& item)
+	{
+		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(&item) })
+			mWeapons.push_back(*weapon);
+		else if (const Potion* potion{ dynamic_cast<const Potion*>(&item) })
+			mPotions.push_back(*potion);
+		else if (const Food* food{ dynamic_cast<const Food*>(&item) })
+			mFood.push_back(*food);
+	}
 };
 
 using namespace std::string_literals;
@@ -617,32 +645,25 @@ void fight(Player& player, Enemy& enemy)
 		char c{};
 		std::cin >> c;
 
-		std::cout << Aesthetics::clear << '\n';
-		displayFight(player, enemy);
-
 		if (c == 'y')
 		{
-			player.getItem()->useOn(enemy);
+			player.getWeapon().useOn(enemy);
 			if (!enemy.isDead())
 				player.setHealth(player.getHealth() - enemy.getDamage());
 
 			std::cout << Aesthetics::clear << '\n';
 			displayFight(player, enemy);
 
-			std::cout << "You dealt " << player.getItem()->getEffect().getModification().getHealth() * -1 << " damage to the " << enemy.getName() << '\n';
+			std::cout << "You dealt " << player.getWeapon().getEffect().getModifiedHealth() * -1 << " damage to the " << enemy.getName() << '\n';
 			if (enemy.isDead())
 			{
 				std::cout << "They are now just a soulless husk\n";
 				break;
 			}
-			else
-				std::cout << "They now have " << enemy.getHealth() << " health left\n";
 
 			std::cout << "They dealt " << enemy.getDamage() << " damage to you\n";
 			if (player.isDead())
 				break;
-			else
-				std::cout << "You now have " << player.getHealth() << " health left\n";
 		}
 	}
 }
@@ -650,6 +671,96 @@ void fight(Player& player, Enemy& enemy)
 char getInput()
 {
 	return static_cast<char>(_getch());
+}
+
+void limit(int& num, int min, int max)
+{
+	if (num < min) num = min;
+	if (num > max) num = max;
+}
+
+template <typename T>
+void addCategory(const std::string& name, const std::vector<T>& items, std::vector<std::string>& names, std::vector<std::vector<const Item*>>& categories)
+{
+	if (items.empty())
+		return;
+
+	names.push_back(name);
+	categories.emplace_back().reserve(items.size());
+	for (const auto& t : items)
+		categories.back().push_back(&t);
+}
+
+void inventory(Player& player)
+{
+	std::vector<std::vector<const Item*>> items{};
+	std::vector<std::string> names{};
+	
+	addCategory("Weapons", player.getWeapons(), names, items);
+	addCategory("Potions", player.getPotions(), names, items);
+	addCategory("Food", player.getFood(), names, items);
+
+	Point indicator{};
+
+	while (true)
+	{
+		std::cout << Aesthetics::clear << '\n';
+		//std::cout << "Weapons\t\t\tPotions\t\t\tFood\n\n";
+		//std::cout << std::left << std::setw(30) << "Weapons" << std::setw(30) << "Potions" << std::setw(30) << "Food" << "\n\n";
+		std::cout << std::left;
+		for (const auto& name : names)
+			std::cout << std::setw(30) << name;
+		std::cout << "\n\n";
+
+		for (std::size_t y{}; y < 10; ++y)
+		{
+			for (std::size_t x{}; x < items.size(); ++x)
+			{
+				if (items[x].size() > y)
+					std::cout << std::setw(20) << items[x][y]->getName() << std::setw(10) << (indicator.x == x && indicator.y == y ? " <" : " .");
+			}
+
+			std::cout << '\n';
+		}
+
+		std::cout << "Enter a key: ";
+		char c{ getInput() };
+
+		if (c == 'q')
+			break;
+
+		switch (c)
+		{
+		case 'w': --indicator.y; break;
+		case 's': ++indicator.y; break;
+		case 'a': --indicator.x; break;
+		case 'd': ++indicator.x; break;
+		}
+
+		limit(indicator.x, 0, static_cast<int>(items.size()) - 1);
+		limit(indicator.y, 0, static_cast<int>(items[static_cast<std::size_t>(indicator.x)].size()) - 1);
+
+		//limit(indicator.x, 0, std::ssize(items) - 1);
+		//auto sizeY{ std::ssize(items[static_cast<std::size_t>(indicator.x)]) };
+		//if (sizeY == 0)
+		//	indicator.x = previousX;
+		//sizeY = std::ssize(items[static_cast<std::size_t>(indicator.x)]);
+		//limit(indicator.y, 0, (sizeY <= 0 ? 0 : sizeY - 1));
+
+		//auto sizeX{ std::ssize(items) };
+		//if (sizeX != 0)
+		//	indicator.x = std::abs(indicator.x) % sizeX;
+		//auto sizeY{ std::ssize(items[static_cast<std::size_t>(indicator.x)]) };
+		//if (sizeY != 0)
+		//	indicator.y = std::abs(indicator.y) % sizeY;
+
+		//if (indicator.x < 0) indicator.x = 0;
+		//else if (indicator.x >= items.size()) indicator.x = items.size() - 1;
+		//if (indicator.y < 0) indicator.y = 0;
+		//else if (indicator.y >= items[indicator.x].size()) indicator.y = items[indicator.x].size() - 1;
+	}
+
+	std::cout << '\n';
 }
 
 int main()
@@ -708,17 +819,21 @@ int main()
 	//std::cout << block6.getEntity(Point{ -1, -1 }).getPosition() << '\n'; SHOULD ASSERT OUT
 
 	Enemy enemy{ map, Point{ 0, 7 }, Enemy::goblin };
+	Enemy enemy2{ map, Point{ 8, 8 }, Enemy::knight };
 
 	Weapon weapon{ Weapon::sword };
-	p.setItem(weapon);
+	p.setWeapon(weapon);
+	p.addItem(weapon);
+	p.addItem(Weapon{ Weapon::musket });
+	p.addItem(Weapon{ Weapon::dagger });
+	p.addItem(Potion{ Potion::healing });
+	p.addItem(Potion{ Potion::healing });
 
 	while (!p.isDead())
 	{
-		std::cout << "Enter a direction: ";
+		std::cout << "Enter a key: ";
 		char c{ getInput() };
 		std::cout << Aesthetics::clear << '\n';
-		//for (int i{}; i < 20; ++i)
-		//	std::cout << '\n';
 
 		Point dir{};
 		switch (c)
@@ -727,6 +842,7 @@ int main()
 		case 'a': dir = Directions::left; break;
 		case 's': dir = Directions::down; break;
 		case 'd': dir = Directions::right; break;
+		case 'i': inventory(p);
 		}
 
 		Entity* entity{ map.getEntity(p.getPosition() + dir) };
@@ -739,6 +855,8 @@ int main()
 
 			if (opponent->isDead())
 				opponent->deactivate();
+
+			continue;
 		}
 
 		std::cout << map << '\n';
