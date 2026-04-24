@@ -363,6 +363,7 @@ class Item
 public:
 	virtual const char* getName() const = 0;
 	virtual const Effect& getEffect() const = 0;
+	virtual void description() const = 0;
 
 	void useOn(CreatureBase& on) const
 	{
@@ -386,6 +387,13 @@ public:
 	inline static constexpr std::array names{ "stick", "dagger", "sword", "musket" }; // have to use CTAD here for the static assert to work properly
 	static_assert(names.size() == max_types);
 
+	inline static constexpr std::array descriptions{
+		"A wooden stick, held by many legendary warriors in the past.",
+		"A boring dagger.",
+		"A long sword made of iron and love.",
+		"A musket which can hurt things or something.",
+	};
+
 	inline static const std::array damages{
 		Effect::modifiedHealth(-1),
 		Effect::modifiedHealth(-2),
@@ -408,6 +416,12 @@ public:
 
 	const char* getName() const override { return names[mType]; }
 	const Effect& getEffect() const override { return damages[mType]; }
+	int getDamage() const { return getEffect().getModifiedHealth() * -1; }
+
+	void description() const override
+	{
+		std::cout << descriptions[mType] << " Deals " << getDamage() << " damage\n\n";
+	}
 };
 
 class Potion : public Item
@@ -425,6 +439,13 @@ public:
 
 	inline static constexpr std::array names{ "potion of healing", "potion of pain and suffering", "potion of strength", "potion of weakness" };
 	static_assert(names.size() == max_types);
+
+	inline static constexpr std::array descriptions{
+		"A red potion and not green for some reason. Increases health by ",
+		"A green potion and not red for some reason. Reduces health by ",
+		"A potion that you can't see the color of because it's in an opaque bottle. Increases damage by ",
+		"It's just beer. Reduces damage by ",
+	};
 
 	inline static const std::array effects{
 		Effect::modifiedHealth(5),
@@ -448,6 +469,11 @@ public:
 
 	const char* getName() const override { return names[mType]; }
 	const Effect& getEffect() const override { return effects[mType]; }
+
+	void description() const override
+	{
+		std::cout << descriptions[mType] << (getEffect().getModifiedHealth() == 0 ? getEffect().getModifiedDamage() : getEffect().getModifiedHealth()) << "\n\n";
+	}
 };
 
 class Food : public Item
@@ -465,6 +491,13 @@ public:
 
 	inline static constexpr std::array names{ "bread", "bread two", "beef", "sandvich" };
 	static_assert(names.size() == max_types);
+
+	inline static constexpr std::array descriptions{
+		"Yummy bread.",
+		"Yummier bread.",
+		"Organic flesh.",
+		"A sandwich with an odd choice of ingredients.",
+	};
 
 	inline static const std::array heals{
 		Effect::modifiedHealth(1),
@@ -488,6 +521,12 @@ public:
 
 	const char* getName() const override { return names[mType]; }
 	const Effect& getEffect() const override { return heals[mType]; }
+	int getHealingAmount() const { return heals[mType].getModifiedHealth(); }
+
+	void description() const override
+	{
+		std::cout << descriptions[mType] << " Heals you by " << getHealingAmount() << "\n\n";
+	}
 };
 
 class Player : public Creature
@@ -496,7 +535,7 @@ private:
 	std::vector<Weapon> mWeapons{};
 	std::vector<Potion> mPotions{};
 	std::vector<Food> mFood{};
-	Weapon* mWeapon{};
+	std::size_t mEquippedWeaponIndex{};
 
 public:
 	Player(Map& map, const Point& position)
@@ -510,12 +549,12 @@ public:
 		return std::make_unique<Player>(*this);
 	}
 
-	const std::vector<Weapon>& getWeapons() { return mWeapons; }
-	const std::vector<Potion>& getPotions() { return mPotions; }
-	const std::vector<Food>& getFood() { return mFood; }
+	const std::vector<Weapon>& getWeapons() const { return mWeapons; }
+	const std::vector<Potion>& getPotions() const { return mPotions; }
+	const std::vector<Food>& getFood() const { return mFood; }
 
-	const Weapon& getWeapon() const { return *mWeapon; }
-	void setWeapon(Weapon& weapon) { mWeapon = &weapon; }
+	const Weapon& getEquippedWeapon() const { return mWeapons[mEquippedWeaponIndex]; }
+	void equipWeaponAtIndex(int index) { mEquippedWeaponIndex = static_cast<std::size_t>(index); }
 
 	void addItem(const Item& item)
 	{
@@ -628,8 +667,8 @@ void displayFight(const Player& player, const Enemy& enemy)
 	int enemyHealth{ enemy.getHealth() < 0 ? 0 : enemy.getHealth() };
 	int playerHealth{ player.getHealth() < 0 ? 0 : player.getHealth() };
 
-	std::cout << "\t" << enemy.getSymbol() << "\t\t" << player.getSymbol() << "\t\n\n";
-	std::cout << "\t" << "hp: " << enemyHealth << "\t\t" << "hp: " << playerHealth << "\t\n\n";
+	std::cout << "\t" << std::setw(10) << enemy.getSymbol() << player.getSymbol() << "\n\n";
+	std::cout << "\t" << "hp: " << std::setw(6) << enemyHealth << "hp: " << playerHealth << "\n\n";
 }
 
 void fight(Player& player, Enemy& enemy)
@@ -647,14 +686,14 @@ void fight(Player& player, Enemy& enemy)
 
 		if (c == 'y')
 		{
-			player.getWeapon().useOn(enemy);
+			player.getEquippedWeapon().useOn(enemy);
 			if (!enemy.isDead())
 				player.setHealth(player.getHealth() - enemy.getDamage());
 
 			std::cout << Aesthetics::clear << '\n';
 			displayFight(player, enemy);
 
-			std::cout << "You dealt " << player.getWeapon().getEffect().getModifiedHealth() * -1 << " damage to the " << enemy.getName() << '\n';
+			std::cout << "You dealt " << player.getEquippedWeapon().getEffect().getModifiedHealth() * -1 << " damage to the " << enemy.getName() << '\n';
 			if (enemy.isDead())
 			{
 				std::cout << "They are now just a soulless husk\n";
@@ -673,12 +712,6 @@ char getInput()
 	return static_cast<char>(_getch());
 }
 
-void limit(int& num, int min, int max)
-{
-	if (num < min) num = min;
-	if (num > max) num = max;
-}
-
 template <typename T>
 void addCategory(const std::string& name, const std::vector<T>& items, std::vector<std::string>& names, std::vector<std::vector<const Item*>>& categories)
 {
@@ -691,73 +724,121 @@ void addCategory(const std::string& name, const std::vector<T>& items, std::vect
 		categories.back().push_back(&t);
 }
 
+void displayCategoryNames(const std::vector<std::string>& names)
+{
+	std::cout << Aesthetics::clear << '\n';
+	for (const auto& name : names)
+		std::cout << std::setw(30) << name;
+	std::cout << "\n\n";
+}
+
+void displayItems(const Player& player, const std::vector<std::vector<const Item*>>& categories, const Point& indicator)
+{
+	std::size_t height{};
+	for (const auto& items : categories)
+		height = std::max(height, items.size());
+
+	for (std::size_t y{}; y < height; ++y)
+	{
+		for (std::size_t x{}; x < categories.size(); ++x)
+		{
+			if (categories[x].size() <= y)
+				continue;
+
+			const Item* item{ categories[x][y] };
+			int nameWidth{ 20 };
+			if (item == &player.getEquippedWeapon())
+			{
+				std::cout << "* ";
+				nameWidth -= 2;
+			}
+
+			std::cout << std::setw(nameWidth) << item->getName() << std::setw(10) << (indicator.x == x && indicator.y == y ? " <" : " .");
+		}
+
+		std::cout << '\n';
+	}
+
+	std::cout << '\n';
+}
+
+void displayInventory(const Player& player, const std::vector<std::string>& names, const std::vector<std::vector<const Item*>>& categories, const Point& indicator)
+{
+	if (categories.empty())
+		std::cout << "Your inventory is empty\n\n";
+	else
+	{
+		displayCategoryNames(names);
+		displayItems(player, categories, indicator);
+	}
+}
+
+void displayItemInfo(const Player& player, const Item* item)
+{
+	if (item)
+		item->description();
+
+	if (item == &player.getEquippedWeapon())
+		std::cout << "Equipped\n\n";
+	else if (dynamic_cast<const Weapon*>(item))
+		std::cout << "Press 'E' to equip\n\n";
+}
+
+void clampIndicator(const std::vector<std::vector<const Item*>>& categories, Point& indicator)
+{
+	indicator.x = std::clamp(indicator.x, 0, static_cast<int>(categories.size()) - 1);
+	indicator.y = std::clamp(indicator.y, 0, static_cast<int>(categories[static_cast<std::size_t>(indicator.x)].size()) - 1);
+}
+
+void moveIndicator(char direction, const std::vector<std::vector<const Item*>>& categories, Point& indicator)
+{
+	switch (direction)
+	{
+	case 'w': --indicator.y; break;
+	case 'a': --indicator.x; break;
+	case 's': ++indicator.y; break;
+	case 'd': ++indicator.x; break;
+	default: return;
+	}
+
+	clampIndicator(categories, indicator);
+}
+
+void addCategories(const Player& player, std::vector<std::string>& names, std::vector<std::vector<const Item*>>& categories)
+{
+	addCategory("Weapons", player.getWeapons(), names, categories);
+	addCategory("Potions", player.getPotions(), names, categories);
+	addCategory("Food", player.getFood(), names, categories);
+}
+
 void inventory(Player& player)
 {
-	std::vector<std::vector<const Item*>> items{};
+	std::vector<std::vector<const Item*>> categories{};
 	std::vector<std::string> names{};
 	
-	addCategory("Weapons", player.getWeapons(), names, items);
-	addCategory("Potions", player.getPotions(), names, items);
-	addCategory("Food", player.getFood(), names, items);
+	addCategories(player, names, categories);
 
 	Point indicator{};
+	char c{};
 
 	while (true)
 	{
-		std::cout << Aesthetics::clear << '\n';
-		//std::cout << "Weapons\t\t\tPotions\t\t\tFood\n\n";
-		//std::cout << std::left << std::setw(30) << "Weapons" << std::setw(30) << "Potions" << std::setw(30) << "Food" << "\n\n";
-		std::cout << std::left;
-		for (const auto& name : names)
-			std::cout << std::setw(30) << name;
-		std::cout << "\n\n";
+		const Item* indicatedItem{ categories[static_cast<std::size_t>(indicator.x)][static_cast<std::size_t>(indicator.y)] };
 
-		for (std::size_t y{}; y < 10; ++y)
-		{
-			for (std::size_t x{}; x < items.size(); ++x)
-			{
-				if (items[x].size() > y)
-					std::cout << std::setw(20) << items[x][y]->getName() << std::setw(10) << (indicator.x == x && indicator.y == y ? " <" : " .");
-			}
-
-			std::cout << '\n';
-		}
+		displayInventory(player, names, categories, indicator);
+		//if (c == '\r')
+		//	std::cout << "happy thursday guys I hope your ceiling doesn't collapse on you\n\n";
+		displayItemInfo(player, indicatedItem);
 
 		std::cout << "Enter a key: ";
-		char c{ getInput() };
+		c = getInput();
 
 		if (c == 'q')
 			break;
+		else if (c == 'e' && dynamic_cast<const Weapon*>(indicatedItem))
+			player.equipWeaponAtIndex(indicator.y);
 
-		switch (c)
-		{
-		case 'w': --indicator.y; break;
-		case 's': ++indicator.y; break;
-		case 'a': --indicator.x; break;
-		case 'd': ++indicator.x; break;
-		}
-
-		limit(indicator.x, 0, static_cast<int>(items.size()) - 1);
-		limit(indicator.y, 0, static_cast<int>(items[static_cast<std::size_t>(indicator.x)].size()) - 1);
-
-		//limit(indicator.x, 0, std::ssize(items) - 1);
-		//auto sizeY{ std::ssize(items[static_cast<std::size_t>(indicator.x)]) };
-		//if (sizeY == 0)
-		//	indicator.x = previousX;
-		//sizeY = std::ssize(items[static_cast<std::size_t>(indicator.x)]);
-		//limit(indicator.y, 0, (sizeY <= 0 ? 0 : sizeY - 1));
-
-		//auto sizeX{ std::ssize(items) };
-		//if (sizeX != 0)
-		//	indicator.x = std::abs(indicator.x) % sizeX;
-		//auto sizeY{ std::ssize(items[static_cast<std::size_t>(indicator.x)]) };
-		//if (sizeY != 0)
-		//	indicator.y = std::abs(indicator.y) % sizeY;
-
-		//if (indicator.x < 0) indicator.x = 0;
-		//else if (indicator.x >= items.size()) indicator.x = items.size() - 1;
-		//if (indicator.y < 0) indicator.y = 0;
-		//else if (indicator.y >= items[indicator.x].size()) indicator.y = items[indicator.x].size() - 1;
+		moveIndicator(c, categories, indicator);
 	}
 
 	std::cout << '\n';
@@ -822,12 +903,14 @@ int main()
 	Enemy enemy2{ map, Point{ 8, 8 }, Enemy::knight };
 
 	Weapon weapon{ Weapon::sword };
-	p.setWeapon(weapon);
 	p.addItem(weapon);
 	p.addItem(Weapon{ Weapon::musket });
 	p.addItem(Weapon{ Weapon::dagger });
 	p.addItem(Potion{ Potion::healing });
 	p.addItem(Potion{ Potion::healing });
+	p.equipWeaponAtIndex(0);
+
+	std::cout << std::left;
 
 	while (!p.isDead())
 	{
