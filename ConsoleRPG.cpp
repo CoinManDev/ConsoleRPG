@@ -675,70 +675,72 @@ char getInput()
 	return static_cast<char>(_getch());
 }
 
-template <typename T>
-std::vector<const Item*> createCategory(const std::vector<T>& items)
+struct Category
 {
-	std::vector<const Item*> category{};
+	std::vector<const Item*> items;
+	std::string name;
+};
 
-	category.reserve(items.size());
+template <typename T>
+Category createCategory(const std::vector<T>& items, std::string_view name)
+{
+	Category category{};
+
+	category.name = name;
+	category.items.reserve(items.size());
 	for (const auto& t : items)
-		category.push_back(&t);
+		category.items.push_back(&t);
 
 	return category;
 }
 
-using Categories = std::vector<std::vector<const Item*>>;
-
-class Inventory
+namespace Inventory
 {
-private:
-	inline static Categories mCategories{};
-	inline static std::vector<std::string> mNames{};
-	inline static Point mIndicator{};
-	constexpr static int mNameWidth{ 20 };
-	constexpr static int mIndicatorWidth{ 10 };
-	constexpr static int mCategoryWidth{ mNameWidth + mIndicatorWidth };
-
-	Inventory() = default;
+	constexpr static int nameWidth{ 20 };
+	constexpr static int indicatorWidth{ 10 };
+	constexpr static int categoryWidth{ nameWidth + indicatorWidth };
 
 	template <typename T>
-	static void addCategory(const std::string& name, const std::vector<T>& items)
+	void addCategory(std::vector<Category>& categories, std::string_view name, const std::vector<T>& items)
 	{
 		if (items.empty())
 			return;
 
-		mNames.push_back(name);
-		mCategories.push_back(createCategory(items));
+		categories.push_back(createCategory(items, name));
 	}
 
-	static void displayCategoryNames(const std::vector<std::string>& names)
+	Category getWeaponCategory(const Player& player) { return createCategory(player.getWeapons(), "Weapons"); }
+	Category getPotionCategory(const Player& player) { return createCategory(player.getPotions(), "Potions"); }
+	Category getFoodCategory(const Player& player) { return createCategory(player.getFood(), "Food"); }
+
+	void displayCategoryNames(const std::vector<Category>& categories)
 	{
-		for (const auto& name : names)
-			std::cout << std::setw(mCategoryWidth) << name;
+		for (const auto& category : categories)
+			std::cout << std::setw(categoryWidth) << category.name;
 		std::cout << "\n\n";
 	}
 
-	static void displayItemAt(const Categories& categories, const Point& indicator, std::size_t x, std::size_t y, const Player& player)
+	void displayItemAt(const std::vector<Category>& categories, const Point& indicator, std::size_t x, std::size_t y, const Player& player)
 	{
-		if (categories[x].size() <= y)
+		if (categories[x].items.size() <= y)
 			return;
 
-		const Item* item{ categories[x][y] };
-		int width{ mNameWidth };
+		const Item* item{ categories[x].items[y] };
+		int width{ nameWidth };
 		if (item == player.getEquippedWeapon())
 		{
 			std::cout << "* ";
 			width -= 2;
 		}
 
-		std::cout << std::setw(width) << item->getName() << std::setw(mIndicatorWidth) << (indicator.x == x && indicator.y == y ? " <" : " .");
+		std::cout << std::setw(width) << item->getName() << std::setw(indicatorWidth) << (indicator.x == x && indicator.y == y ? " <" : " .");
 	}
 
-	static void displayItems(const Categories& categories, const Point& indicator, const Player& player)
+	void displayItems(const std::vector<Category>& categories, const Point& indicator, const Player& player)
 	{
 		std::size_t height{};
-		for (const auto& items : categories)
-			height = std::max(height, items.size());
+		for (const auto& category : categories)
+			height = std::max(height, category.items.size());
 
 		for (std::size_t y{}; y < height; ++y)
 		{
@@ -753,13 +755,13 @@ private:
 		std::cout << '\n';
 	}
 
-	static void displayInventory(const std::vector<std::string>& names, const Categories& categories, const Point& indicator, const Player& player)
+	void displayInventory(const std::vector<Category>& categories, const Point& indicator, const Player& player)
 	{
-		displayCategoryNames(names);
+		displayCategoryNames(categories);
 		displayItems(categories, indicator, player);
 	}
 
-	static void displayItemInfo(const Item* item, const Player& player)
+	void displayItemInfo(const Item* item, const Player& player)
 	{
 		if (item)
 			item->description();
@@ -770,43 +772,32 @@ private:
 			std::cout << "\nPress 'E' to equip\n";
 	}
 
-	static void clampIndicator(Point& indicator, const Categories& categories)
+	void clampIndicator(Point& indicator, const std::vector<Category>& categories)
 	{
 		// categories.size() - 1 might equal -1 if the size is 0 but if it is 0 then we won't really need to show the indicator anyway
 		indicator.x = std::clamp(indicator.x, 0, static_cast<int>(categories.size()) - 1);
-		indicator.y = std::clamp(indicator.y, 0, static_cast<int>(categories[static_cast<std::size_t>(indicator.x)].size()) - 1);
+		indicator.y = std::clamp(indicator.y, 0, static_cast<int>(categories[static_cast<std::size_t>(indicator.x)].items.size()) - 1);
 	}
 
-	static void addCategories(const Player& player)
+	void addCategories(std::vector<Category>& categories, const Player& player)
 	{
-		addCategory("Weapons", player.getWeapons());
-		addCategory("Potions", player.getPotions());
-		addCategory("Food", player.getFood());
+		addCategory(categories, "Weapons", player.getWeapons());
+		addCategory(categories, "Potions", player.getPotions());
+		addCategory(categories, "Food", player.getFood());
 	}
 
-	static void clear()
+	const Item* getIndicatedItem(const std::vector<Category>& categories, const Point& indicator)
 	{
-		mCategories.clear();
-		mNames.clear();
-		mIndicator = Point{};
+		return categories[static_cast<std::size_t>(indicator.x)].items[static_cast<std::size_t>(indicator.y)];
 	}
 
-public:
-	Inventory(const Inventory&) = delete;
-	Inventory& operator=(const Inventory&) = delete;
-
-	static const Item* getIndicatedItem(const Categories& categories, const Point& indicator)
+	void display(const std::vector<Category>& categories, const Point& indicator, const Player& player)
 	{
-		return categories[static_cast<std::size_t>(indicator.x)][static_cast<std::size_t>(indicator.y)];
-	}
-
-	static void display(const std::vector<std::string>& names, const Categories& categories, const Point& indicator, const Player& player)
-	{
-		displayInventory(names, categories, indicator, player);
+		displayInventory(categories, indicator, player);
 		displayItemInfo(getIndicatedItem(categories, indicator), player);
 	}
 
-	static void moveIndicator(Point& indicator, const Categories& categories, char direction)
+	void moveIndicator(Point& indicator, const std::vector<Category>& categories, char direction)
 	{
 		switch (direction)
 		{
@@ -820,17 +811,19 @@ public:
 		clampIndicator(indicator, categories);
 	}
 
-	static void inventory(Player& player)
+	void inventory(Player& player)
 	{
-		addCategories(player);
+		Point indicator{};
+		std::vector<Category> categories;
+		addCategories(categories, player);
 
 		while (true)
 		{
 			std::cout << Aesthetics::clear << '\n';
-			if (mCategories.empty())
+			if (categories.empty())
 				std::cout << "Your inventory is empty\n";
 			else
-				display(mNames, mCategories, mIndicator, player);
+				display(categories, indicator, player);
 
 			std::cout << "\n( WASD to move cursor, 'q' to quit inventory )\n";
 			char c{ getInput() };
@@ -838,216 +831,229 @@ public:
 			if (c == 'q')
 				break;
 
-			if (mCategories.empty())
+			if (categories.empty())
 				continue;
 
-			if (c == 'e'&& dynamic_cast<const Weapon*>(mCategories[static_cast<std::size_t>(mIndicator.x)][static_cast<std::size_t>(mIndicator.y)]))
-				player.equipWeaponAtIndex(mIndicator.y);
+			if (c == 'e'&& dynamic_cast<const Weapon*>(getIndicatedItem(categories, indicator)))
+				player.equipWeaponAtIndex(indicator.y);
 			else
-				moveIndicator(mIndicator, mCategories, c);
+				moveIndicator(indicator, categories, c);
 		}
 
 		std::cout << '\n';
-
-		clear();
 	}
 };
 
 namespace Fighting
 {
 	constexpr int fleeChance{ 3 };
-}
 
-struct FightState
-{
-	Player& player;
-	Enemy& enemy;
-	std::function<void()> announce;
-	bool finished{};
-};
-
-struct Option
-{
-	std::string name{};
-	std::function<int(FightState&)> action{};
-};
-
-int attack(FightState& state)
-{
-	if (state.player.getEquippedWeapon())
-		state.player.getEquippedWeapon()->useOn(state.enemy);
-	else
-		state.enemy.setHealth(state.enemy.getHealth() - 1);
-
-	return 0;
-}
-
-int usePotion(FightState& state)
-{
-	if (state.player.getPotions().empty())
+	struct FightState
 	{
-		state.announce = []() { std::cout << "You have no potions\n"; };
-		return 1;
-	}
-
-	Point indicator{};
-
-	while (true)
-	{
-		std::cout << Aesthetics::clear << "Choose a potion to use:\n\n";
-
-		std::vector<std::vector<const Item*>> potionCategory{ createCategory(state.player.getPotions()) };
-		Inventory::display({ "Potions" }, potionCategory, indicator, state.player);
-
-		std::cout << "\n( W/S to move between potions, 'E' to select, 'Q' to cancel )\n";
-
-		char c{ getInput() };
-
-		if (c == 'e')
-		{
-			const Potion* potion{ dynamic_cast<const Potion*>(Inventory::getIndicatedItem(potionCategory, indicator)) };
-			if (potion)
-			{
-				potion->isAppliedOnUser() ? potion->useOn(state.player) : potion->useOn(state.enemy);
-				state.announce = [=]() { std::cout << "You used a " << potion->getName() << " on " << (potion->isAppliedOnUser() ? "yourself " : "the enemy ") << '\n'; };
-				return 0;
-			}
-		}
-		else if (c == 'q')
-			return 0;
-
-		Inventory::moveIndicator(indicator, potionCategory, c);
-	}
-}
-
-int eatFood(FightState& state)
-{
-	if (state.player.getFood().empty())
-	{
-		state.announce = []() { std::cout << "You have no food\n"; };
-		return 1;
-	}
-
-	Point indicator{};
-
-	while (true)
-	{
-		std::cout << Aesthetics::clear << "Choose a food to eat:\n\n";
-
-		std::vector<std::vector<const Item*>> foodCategory{ createCategory(state.player.getFood()) };
-		Inventory::display({ "Food" }, foodCategory, indicator, state.player);
-
-		std::cout << "\n( W/S to move between potions, 'E' to select, 'Q' to cancel )\n";
-
-		char c{ getInput() };
-
-		if (c == 'e')
-		{
-			const Food* food{ dynamic_cast<const Food*>(Inventory::getIndicatedItem(foodCategory, indicator)) };
-			if (food)
-			{
-				food->useOn(state.player);
-				state.announce = [=]() { std::cout << "You ate a " << food->getName() << '\n'; };
-				return 0;
-			}
-		}
-		else if (c == 'q')
-			return 0;
-
-		Inventory::moveIndicator(indicator, foodCategory, c);
-	}
-}
-
-int tryToFlee(FightState& state)
-{
-	if (Random::get(1, Fighting::fleeChance) == 1)
-	{
-		state.announce = []() { std::cout << "You successfully fled like a coward\n"; };
-		state.finished = true;
-		return 1;
-	}
-	else
-	{
-		state.announce = []() { std::cout << "You couldn't flee\n"; };
-		return 0;
-	}
-}
-
-void displayFight(const Player& player, const Enemy& enemy)
-{
-	int enemyHealth{ enemy.getHealth() < 0 ? 0 : enemy.getHealth() };
-	int playerHealth{ player.getHealth() < 0 ? 0 : player.getHealth() };
-
-	std::cout << "\t" << std::setw(10) << enemy.getSymbol() << player.getSymbol() << "\n\n";
-	std::cout << "\t" << "hp: " << std::setw(6) << enemyHealth << "hp: " << playerHealth << "\n\n";
-}
-
-void fight(Player& player, Enemy& enemy)
-{
-	std::cout << Aesthetics::clear << '\n';
-	displayFight(player, enemy);
-
-	FightState state{ player, enemy, [&]() { std::cout << "A fight has started between you and the " << enemy.getName() << '\n'; }, false };
-
-	std::array options{
-		Option{ "attack", attack },
-		Option{ "use potion", usePotion },
-		Option{ "eat food", eatFood },
-		Option{ "try to flee", tryToFlee },
+		Player& player;
+		Enemy& enemy;
+		std::function<void()> announce;
+		bool finished{};
 	};
 
-	int indicator{};
-	
-	while (!state.finished)
+	struct Option
 	{
-		state.announce();
+		std::string name{};
+		std::function<int(FightState&)> action{};
+	};
 
-		for (std::size_t i{}; i < options.size(); ++i)
-			std::cout << (static_cast<std::size_t>(indicator) == i ? "> " : ". ") << std::setw(15) << options[i].name;
-		std::cout << "\n\n( A/D to move between options, 'E' to select )\n";
+	int attack(FightState& state)
+	{
+		if (state.player.getEquippedWeapon())
+			state.player.getEquippedWeapon()->useOn(state.enemy);
+		else
+			state.enemy.setHealth(state.enemy.getHealth() - 1);
 
-		char c{ getInput() };
+		return 0;
+	}
 
-		if (c == 'e')
+	void displayItemUsage(FightState& state, const Category& category, const Point& indicator)
+	{
+		std::cout << Aesthetics::clear << "Choose an item to use:\n\n";
+		Inventory::display({ category }, indicator, state.player);
+		std::cout << "\n( W/S to move between items, 'E' to select, 'Q' to cancel )\n";
+	}
+
+	int processInputForItemUsage(FightState& state, const Category& category, Point& indicator, const std::function<void(FightState&, const Item*)>& onItemSelect)
+	{
+		char input{ getInput() };
+
+		if (input == 'e')
 		{
-			if (options[static_cast<std::size_t>(indicator)].action(state) != 0)
+			const Item* item{ Inventory::getIndicatedItem({ category }, indicator) };
+			if (item)
 			{
+				onItemSelect(state, item);
+				return 1;
+			}
+
+			return 0;
+		}
+		else if (input == 'q')
+			return 1;
+		else
+		{
+			Inventory::moveIndicator(indicator, { category }, input);
+			return 0;
+		}
+	}
+
+	int useItem(FightState& state, const Category& category, const std::function<void(FightState&)>& onItemAbsence, const std::function<void(FightState&, const Item*)>& onItemSelect)
+	{
+		if (category.items.empty())
+		{
+			onItemAbsence(state);
+			return 1;
+		}
+
+		Point indicator{};
+
+		while (true)
+		{
+			displayItemUsage(state, category, indicator);
+
+			if (processInputForItemUsage(state, category, indicator, onItemSelect) != 0)
+				break;
+		}
+
+		return 0;
+	}
+
+	void announcePotionAbsence(FightState& state)
+	{
+		state.announce = []() { std::cout << "You have no potions\n"; };
+	}
+
+	void selectPotion(FightState& state, const Item* item)
+	{
+		const Potion* potion{ dynamic_cast<const Potion*>(item) };
+		if (potion)
+		{
+			potion->isAppliedOnUser() ? potion->useOn(state.player) : potion->useOn(state.enemy);
+			state.announce = [=]() { std::cout << "You used a " << potion->getName() << " on " << (potion->isAppliedOnUser() ? "yourself " : "the enemy ") << '\n'; };
+		}
+	}
+
+	int usePotion(FightState& state)
+	{
+		return useItem(state, Inventory::getPotionCategory(state.player), announcePotionAbsence, selectPotion);
+	}
+
+	void announceFoodAbsence(FightState& state)
+	{
+		state.announce = []() { std::cout << "You have no food\n"; };
+	}
+
+	void selectFood(FightState& state, const Item* item)
+	{
+		const Food* food{ dynamic_cast<const Food*>(item) };
+		if (food)
+		{
+			food->useOn(state.player);
+			state.announce = [=]() { std::cout << "You ate a " << food->getName() << '\n'; };
+		}
+	}
+
+	int eatFood(FightState& state)
+	{
+		return useItem(state, Inventory::getFoodCategory(state.player), announceFoodAbsence, selectFood);
+	}
+
+	int tryToFlee(FightState& state)
+	{
+		if (Random::get(1, fleeChance) == 1)
+		{
+			state.announce = []() { std::cout << "You successfully fled like a coward\n"; };
+			state.finished = true;
+			return 1;
+		}
+		else
+		{
+			state.announce = []() { std::cout << "You couldn't flee\n"; };
+			return 0;
+		}
+	}
+
+	void displayFight(const Player& player, const Enemy& enemy)
+	{
+		int enemyHealth{ enemy.getHealth() < 0 ? 0 : enemy.getHealth() };
+		int playerHealth{ player.getHealth() < 0 ? 0 : player.getHealth() };
+
+		std::cout << "\t" << std::setw(10) << enemy.getSymbol() << player.getSymbol() << "\n\n";
+		std::cout << "\t" << "hp: " << std::setw(6) << enemyHealth << "hp: " << playerHealth << "\n\n";
+	}
+
+	void fight(Player& player, Enemy& enemy)
+	{
+		std::cout << Aesthetics::clear << '\n';
+		displayFight(player, enemy);
+
+		FightState state{ player, enemy, [&]() { std::cout << "A fight has started between you and the " << enemy.getName() << '\n'; }, false };
+
+		std::array options{
+			Option{ "attack", attack },
+			Option{ "use potion", usePotion },
+			Option{ "eat food", eatFood },
+			Option{ "try to flee", tryToFlee },
+		};
+
+		int indicator{};
+
+		while (!state.finished)
+		{
+			state.announce();
+
+			for (std::size_t i{}; i < options.size(); ++i)
+				std::cout << (static_cast<std::size_t>(indicator) == i ? "> " : ". ") << std::setw(15) << options[i].name;
+			std::cout << "\n\n( A/D to move between options, 'E' to select )\n";
+
+			char c{ getInput() };
+
+			if (c == 'e')
+			{
+				if (options[static_cast<std::size_t>(indicator)].action(state) != 0)
+				{
+					std::cout << Aesthetics::clear << '\n';
+					displayFight(player, enemy);
+					continue;
+				}
+
+				if (!enemy.isDead())
+					player.setHealth(player.getHealth() - enemy.getDamage());
+
 				std::cout << Aesthetics::clear << '\n';
 				displayFight(player, enemy);
+
+				std::cout << "You dealt " << (player.getEquippedWeapon() ? player.getEquippedWeapon()->getEffect().getModifiedHealth() * -1 : 1) << " damage to the " << enemy.getName() << '\n';
+				if (enemy.isDead())
+				{
+					std::cout << "They are now just a soulless husk\n";
+					break;
+				}
+
+				std::cout << "They dealt " << enemy.getDamage() << " damage to you\n";
+				if (player.isDead())
+					break;
+
 				continue;
 			}
-			
-			if (!enemy.isDead())
-				player.setHealth(player.getHealth() - enemy.getDamage());
+
+			switch (c)
+			{
+			case 'a': --indicator; break;
+			case 'd': ++indicator; break;
+			}
+
+			indicator = std::clamp(indicator, 0, static_cast<int>(options.size()) - 1);
 
 			std::cout << Aesthetics::clear << '\n';
 			displayFight(player, enemy);
-
-			std::cout << "You dealt " << (player.getEquippedWeapon() ? player.getEquippedWeapon()->getEffect().getModifiedHealth() * -1 : 1 ) << " damage to the " << enemy.getName() << '\n';
-			if (enemy.isDead())
-			{
-				std::cout << "They are now just a soulless husk\n";
-				break;
-			}
-
-			std::cout << "They dealt " << enemy.getDamage() << " damage to you\n";
-			if (player.isDead())
-				break;
-
-			continue;
 		}
-
-		switch (c)
-		{
-		case 'a': --indicator; break;
-		case 'd': ++indicator; break;
-		default: continue;
-		}
-
-		indicator = std::clamp(indicator, 0, static_cast<int>(options.size()) - 1);
-
-		std::cout << Aesthetics::clear << '\n';
-		displayFight(player, enemy);
 	}
 }
 
@@ -1141,7 +1147,7 @@ int main()
 		else if (Enemy* opponent{ dynamic_cast<Enemy*>(entity) })
 		{
 			std::cout << map << '\n';
-			fight(p, *opponent);
+			Fighting::fight(p, *opponent);
 
 			if (opponent->isDead())
 				opponent->deactivate();
