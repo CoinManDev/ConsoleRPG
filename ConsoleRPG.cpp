@@ -847,29 +847,35 @@ namespace Inventory
 namespace Fighting
 {
 	constexpr int fleeChance{ 3 };
+	constexpr int displayWidth{ 10 };
 
 	struct FightState
 	{
 		Player& player;
 		Enemy& enemy;
 		std::function<void()> announce;
-		bool finished{};
+		bool finished{ false };
+		bool playersTurn{ true };
 	};
 
 	struct Option
 	{
 		std::string name{};
-		std::function<int(FightState&)> action{};
+		std::function<void(FightState&)> action{};
 	};
 
-	int attack(FightState& state)
+	void attack(FightState& state)
 	{
 		if (state.player.getEquippedWeapon())
+		{
 			state.player.getEquippedWeapon()->useOn(state.enemy);
+			state.announce = [&]() { std::cout << "You dealt " << state.player.getEquippedWeapon()->getDamage() << " damage to the " << state.enemy.getName() << '\n'; };
+		}
 		else
+		{
 			state.enemy.setHealth(state.enemy.getHealth() - 1);
-
-		return 0;
+			state.announce = [&]() { std::cout << "You dealt 1 damage to the " << state.enemy.getName() << '\n'; };
+		}
 	}
 
 	void displayItemUsage(FightState& state, const Category& category, const Point& indicator)
@@ -895,7 +901,10 @@ namespace Fighting
 			return 0;
 		}
 		else if (input == 'q')
+		{
+			state.playersTurn = true;
 			return 1;
+		}
 		else
 		{
 			Inventory::moveIndicator(indicator, { category }, input);
@@ -903,30 +912,25 @@ namespace Fighting
 		}
 	}
 
-	int useItem(FightState& state, const Category& category, const std::function<void(FightState&)>& onItemAbsence, const std::function<void(FightState&, const Item*)>& onItemSelect)
+	void useItem(FightState& state, const Category& category, const std::function<void(FightState&)>& onItemAbsence, const std::function<void(FightState&, const Item*)>& onItemSelect)
 	{
 		if (category.items.empty())
 		{
 			onItemAbsence(state);
-			return 1;
+			return;
 		}
 
 		Point indicator{};
 
-		while (true)
-		{
+		do {
 			displayItemUsage(state, category, indicator);
-
-			if (processInputForItemUsage(state, category, indicator, onItemSelect) != 0)
-				break;
-		}
-
-		return 0;
+		} while (processInputForItemUsage(state, category, indicator, onItemSelect) == 0);
 	}
 
-	void announcePotionAbsence(FightState& state)
+	void onPotionAbsence(FightState& state)
 	{
 		state.announce = []() { std::cout << "You have no potions\n"; };
+		state.playersTurn = true;
 	}
 
 	void selectPotion(FightState& state, const Item* item)
@@ -939,14 +943,15 @@ namespace Fighting
 		}
 	}
 
-	int usePotion(FightState& state)
+	void usePotion(FightState& state)
 	{
-		return useItem(state, Inventory::getPotionCategory(state.player), announcePotionAbsence, selectPotion);
+		useItem(state, Inventory::getPotionCategory(state.player), onPotionAbsence, selectPotion);
 	}
 
-	void announceFoodAbsence(FightState& state)
+	void onFoodAbsence(FightState& state)
 	{
 		state.announce = []() { std::cout << "You have no food\n"; };
+		state.playersTurn = true;
 	}
 
 	void selectFood(FightState& state, const Item* item)
@@ -959,48 +964,130 @@ namespace Fighting
 		}
 	}
 
-	int eatFood(FightState& state)
+	void eatFood(FightState& state)
 	{
-		return useItem(state, Inventory::getFoodCategory(state.player), announceFoodAbsence, selectFood);
+		useItem(state, Inventory::getFoodCategory(state.player), onFoodAbsence, selectFood);
 	}
 
-	int tryToFlee(FightState& state)
+	void tryToFlee(FightState& state)
 	{
 		if (Random::get(1, fleeChance) == 1)
-		{
-			state.announce = []() { std::cout << "You successfully fled like a coward\n"; };
 			state.finished = true;
-			return 1;
-		}
 		else
-		{
 			state.announce = []() { std::cout << "You couldn't flee\n"; };
-			return 0;
-		}
 	}
+
+	const std::array options{
+		Option{ "attack", attack },
+		Option{ "use potion", usePotion },
+		Option{ "eat food", eatFood },
+		Option{ "try to flee", tryToFlee },
+	};
 
 	void displayFight(const Player& player, const Enemy& enemy)
 	{
 		int enemyHealth{ enemy.getHealth() < 0 ? 0 : enemy.getHealth() };
 		int playerHealth{ player.getHealth() < 0 ? 0 : player.getHealth() };
 
-		std::cout << "\t" << std::setw(10) << enemy.getSymbol() << player.getSymbol() << "\n\n";
-		std::cout << "\t" << "hp: " << std::setw(6) << enemyHealth << "hp: " << playerHealth << "\n\n";
+		std::cout << "\t" << std::setw(displayWidth) << enemy.getSymbol() << player.getSymbol() << "\n\n";
+		std::cout << "\t" << "hp: " << std::setw(displayWidth - 4) << enemyHealth << "hp: " << playerHealth << "\n\n"; // 4 is the length of "hp: "
+	}
+
+	void displayState(const FightState& state)
+	{
+		std::cout << Aesthetics::clear << '\n';
+		displayFight(state.player, state.enemy);
+
+		state.announce();
+	}
+
+	void displayOptions(int indicator)
+	{
+		for (std::size_t i{}; i < options.size(); ++i)
+			std::cout << (static_cast<std::size_t>(indicator) == i ? "> " : ". ") << std::setw(15) << options[i].name;
+	}
+
+	void doAction(FightState& state, int indicator)
+	{
+		state.announce = []() { std::cout << "...\n"; }; // in case action doesn't set an announce ( me ) reset announce to avoid showing the previous one after the screen is cleared in the next loop iteration ( AI )
+		state.playersTurn = false; // do it before in case the action modifies playersTurn itself
+		options[static_cast<std::size_t>(indicator)].action(state);
+	}
+
+	void moveIndicator(int& indicator, char direction)
+	{
+		switch (direction)
+		{
+		case 'a': --indicator; break;
+		case 'd': ++indicator; break;
+		}
+
+		indicator = std::clamp(indicator, 0, static_cast<int>(options.size()) - 1);
+	}
+
+	void enemyAttack(FightState& state)
+	{
+		state.player.setHealth(state.player.getHealth() - state.enemy.getDamage());
+		state.announce = [&]() { std::cout << "They dealt " << state.enemy.getDamage() << " damage to you\n"; };
+		state.playersTurn = true;
+	}
+
+	void playersTurn(FightState& state, int& indicator)
+	{
+		displayOptions(indicator);
+		std::cout << "\n\n( A/D to move between options, 'E' to select )\n";
+
+		char c{ getInput() };
+
+		if (c == 'e')
+			doAction(state, indicator);
+		else
+			moveIndicator(indicator, c);
+	}
+
+	void enemysTurn(FightState& state)
+	{
+		std::cout << "\nPress anything to continue\n";//"\n( 'E' to continue )\n";
+		getInput();
+
+		enemyAttack(state);
+	}
+
+	void sayEndMessage(const FightState& state)
+	{
+		if (state.player.isDead())
+			std::cout << "You died, quite embarrassingly...\n";
+		else if (state.enemy.isDead())
+			std::cout << "You killed them, they are now just a soulless husk\n";
+		else if (state.finished)
+			std::cout << "You successfully fled like a coward\n";
 	}
 
 	void fight(Player& player, Enemy& enemy)
+	{
+		FightState state{ player, enemy, [&]() { std::cout << "A fight has started between you and the " << enemy.getName() << '\n'; }, false, true };
+		int indicator{};
+
+		while (!state.finished && !player.isDead() && !enemy.isDead())
+		{
+			displayState(state);
+
+			if (state.playersTurn)
+				playersTurn(state, indicator);
+			else
+				enemysTurn(state);
+		}
+
+		displayState(state);
+		sayEndMessage(state);
+	}
+
+	/*void fight(Player& player, Enemy& enemy)
 	{
 		std::cout << Aesthetics::clear << '\n';
 		displayFight(player, enemy);
 
 		FightState state{ player, enemy, [&]() { std::cout << "A fight has started between you and the " << enemy.getName() << '\n'; }, false };
-
-		std::array options{
-			Option{ "attack", attack },
-			Option{ "use potion", usePotion },
-			Option{ "eat food", eatFood },
-			Option{ "try to flee", tryToFlee },
-		};
 
 		int indicator{};
 
@@ -1054,7 +1141,7 @@ namespace Fighting
 			std::cout << Aesthetics::clear << '\n';
 			displayFight(player, enemy);
 		}
-	}
+	}*/
 }
 
 int main()
