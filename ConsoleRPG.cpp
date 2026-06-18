@@ -972,7 +972,10 @@ namespace Fighting
 	void tryToFlee(FightState& state)
 	{
 		if (Random::get(1, fleeChance) == 1)
+		{
 			state.finished = true;
+			state.announce = []() { std::cout << "You successfully fled like a coward\n"; };
+		}
 		else
 			state.announce = []() { std::cout << "You couldn't flee\n"; };
 	}
@@ -1059,8 +1062,8 @@ namespace Fighting
 			std::cout << "You died, quite embarrassingly...\n";
 		else if (state.enemy.isDead())
 			std::cout << "You killed them, they are now just a soulless husk\n";
-		else if (state.finished)
-			std::cout << "You successfully fled like a coward\n";
+		//else if (state.finished)
+		//	std::cout << "You successfully fled like a coward\n";
 	}
 
 	void fight(Player& player, Enemy& enemy)
@@ -1081,67 +1084,6 @@ namespace Fighting
 		displayState(state);
 		sayEndMessage(state);
 	}
-
-	/*void fight(Player& player, Enemy& enemy)
-	{
-		std::cout << Aesthetics::clear << '\n';
-		displayFight(player, enemy);
-
-		FightState state{ player, enemy, [&]() { std::cout << "A fight has started between you and the " << enemy.getName() << '\n'; }, false };
-
-		int indicator{};
-
-		while (!state.finished)
-		{
-			state.announce();
-
-			for (std::size_t i{}; i < options.size(); ++i)
-				std::cout << (static_cast<std::size_t>(indicator) == i ? "> " : ". ") << std::setw(15) << options[i].name;
-			std::cout << "\n\n( A/D to move between options, 'E' to select )\n";
-
-			char c{ getInput() };
-
-			if (c == 'e')
-			{
-				if (options[static_cast<std::size_t>(indicator)].action(state) != 0)
-				{
-					std::cout << Aesthetics::clear << '\n';
-					displayFight(player, enemy);
-					continue;
-				}
-
-				if (!enemy.isDead())
-					player.setHealth(player.getHealth() - enemy.getDamage());
-
-				std::cout << Aesthetics::clear << '\n';
-				displayFight(player, enemy);
-
-				std::cout << "You dealt " << (player.getEquippedWeapon() ? player.getEquippedWeapon()->getEffect().getModifiedHealth() * -1 : 1) << " damage to the " << enemy.getName() << '\n';
-				if (enemy.isDead())
-				{
-					std::cout << "They are now just a soulless husk\n";
-					break;
-				}
-
-				std::cout << "They dealt " << enemy.getDamage() << " damage to you\n";
-				if (player.isDead())
-					break;
-
-				continue;
-			}
-
-			switch (c)
-			{
-			case 'a': --indicator; break;
-			case 'd': ++indicator; break;
-			}
-
-			indicator = std::clamp(indicator, 0, static_cast<int>(options.size()) - 1);
-
-			std::cout << Aesthetics::clear << '\n';
-			displayFight(player, enemy);
-		}
-	}*/
 }
 
 int main()
@@ -1246,6 +1188,9 @@ int main()
 	}
 
 	std::cout << "You lost\n";
+
+	getInput();
+	getInput();
 
 	return 0;
 }
