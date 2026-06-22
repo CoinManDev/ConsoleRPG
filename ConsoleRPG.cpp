@@ -296,11 +296,22 @@ public:
 	virtual ~CreatureBase() = default;
 
 	int getHealth() const { return mHealth; }
-	void setHealth(int health) { mHealth = health; }
+	void setHealth(int health)
+	{
+		mHealth = health;
+		if (mHealth < 0)
+			mHealth = 0;
+	}
 
 	int getDamage() const { return mDamage; }
-	void setDamage(int damage) { mDamage = damage; }
+	void setDamage(int damage)
+	{
+		mDamage = damage;
+		if (mDamage < 0)
+			mDamage = 0;
+	}
 
+	void damage(int amount) { setHealth(mHealth - amount); }
 	bool isDead() const { return mHealth <= 0; }
 };
 
@@ -365,6 +376,8 @@ public:
 	virtual const char* getName() const = 0;
 	virtual const Effect& getEffect() const = 0;
 	virtual void description() const = 0;
+
+	virtual ~Item() = default;
 
 	void useOn(CreatureBase& on) const
 	{
@@ -508,10 +521,10 @@ public:
 	static_assert(descriptions.size() == max_types);
 
 	inline static const std::array heals{
-		Effect::modifiedHealth(1),
 		Effect::modifiedHealth(2),
 		Effect::modifiedHealth(4),
 		Effect::modifiedHealth(8),
+		Effect::modifiedHealth(16),
 	};
 	static_assert(heals.size() == max_types);
 
@@ -547,7 +560,7 @@ private:
 
 public:
 	Player(Map& map, const Point& position)
-		: Creature{ map, position, 'P', Aesthetics::yellow, 10, 1 }
+		: Creature{ map, position, 'P', Aesthetics::yellow, 10, 0 }
 	{
 
 	}
@@ -585,18 +598,22 @@ public:
 		goblin,
 		wizard,
 		knight,
+		ogre,
 
 		max_types,
 	};
 
-	inline static const std::array names{ "goblin"s, "wizard"s, "knight"s };
+	inline static const std::array names{ "goblin"s, "wizard"s, "knight"s, "ogre"s };
 	static_assert(names.size() == max_types);
 
-	constexpr static std::array symbols{ 'G', 'W', 'K' };
+	constexpr static std::array symbols{ 'G', 'W', 'K', 'O' };
 	static_assert(symbols.size() == max_types);
 
-	inline static const std::array stats{ CreatureBase{ 5, 1 }, CreatureBase{ 10, 2 }, CreatureBase{ 20, 4 } };
+	inline static const std::array stats{ CreatureBase{ 5, 1 }, CreatureBase{ 10, 2 }, CreatureBase{ 20, 4 }, CreatureBase{ 40, 8 } };
 	static_assert(stats.size() == max_types);
+
+	constexpr static std::array tiers{ 1, 2, 3, 4 };
+	static_assert(tiers.size() == max_types);
 
 private:
 	Type mType{};
@@ -615,6 +632,7 @@ public:
 	}
 
 	const std::string& getName() const { return mName; }
+	int getTier() const { return tiers[mType]; }
 };
 
 class Wall : public Entity
@@ -723,7 +741,10 @@ namespace Inventory
 	void displayItemAt(const std::vector<Category>& categories, const Point& indicator, std::size_t x, std::size_t y, const Player& player)
 	{
 		if (categories[x].items.size() <= y)
+		{
+			std::cout << std::setw(nameWidth + indicatorWidth) << " ";
 			return;
+		}
 
 		const Item* item{ categories[x].items[y] };
 		int width{ nameWidth };
@@ -844,6 +865,79 @@ namespace Inventory
 	}
 };
 
+namespace Loot
+{
+	using LootTable = std::vector<std::vector<std::unique_ptr<Item>>>;
+
+	/*const LootTable lootTable{
+		{ // Tier 1
+			std::make_unique<Weapon>(Weapon::stick),
+			std::make_unique<Potion>(Potion::healing),
+			std::make_unique<Potion>(Potion::pain),
+			std::make_unique<Food>(Food::bread),
+		},
+		{ // Tier 2
+			std::make_unique<Weapon>(Weapon::dagger),
+			std::make_unique<Potion>(Potion::healing),
+			std::make_unique<Potion>(Potion::pain),
+			std::make_unique<Food>(Food::bread_two),
+		},
+		{ // Tier 3
+			std::make_unique<Weapon>(Weapon::sword),
+			std::make_unique<Potion>(Potion::strength),
+			std::make_unique<Potion>(Potion::weakness),
+			std::make_unique<Food>(Food::beef),
+		},
+		{ // Tier 4
+			std::make_unique<Weapon>(Weapon::musket),
+			std::make_unique<Potion>(Potion::strength),
+			std::make_unique<Potion>(Potion::weakness),
+			std::make_unique<Food>(Food::sandvich),
+		},
+	};*/
+	
+	LootTable getLootTable()
+	{
+		LootTable lootTable{};
+		lootTable.resize(4);
+
+		// Tier 1 loot
+		lootTable[0].push_back(std::make_unique<Weapon>(Weapon::stick));
+		lootTable[0].push_back(std::make_unique<Potion>(Potion::healing));
+		lootTable[0].push_back(std::make_unique<Potion>(Potion::pain));
+		lootTable[0].push_back(std::make_unique<Food>(Food::bread));
+
+		// Tier 2 loot
+		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::dagger));
+		lootTable[1].push_back(std::make_unique<Potion>(Potion::healing));
+		lootTable[1].push_back(std::make_unique<Potion>(Potion::pain));
+		lootTable[1].push_back(std::make_unique<Food>(Food::bread_two));
+
+		// Tier 3 loot
+		lootTable[2].push_back(std::make_unique<Weapon>(Weapon::sword));
+		lootTable[2].push_back(std::make_unique<Potion>(Potion::strength));
+		lootTable[2].push_back(std::make_unique<Potion>(Potion::weakness));
+		lootTable[2].push_back(std::make_unique<Food>(Food::beef));
+
+		// Tier 4 loot
+		lootTable[3].push_back(std::make_unique<Weapon>(Weapon::musket));
+		lootTable[3].push_back(std::make_unique<Potion>(Potion::strength));
+		lootTable[3].push_back(std::make_unique<Potion>(Potion::weakness));
+		lootTable[3].push_back(std::make_unique<Food>(Food::sandvich));
+
+		return lootTable;
+	}
+
+	std::unique_ptr<Item> getRandomLoot(int tier)
+	{
+		LootTable lootTable{ getLootTable() };
+
+		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
+		std::size_t stier{ static_cast<std::size_t>(tier) };
+		return std::move(lootTable[stier - 1][static_cast<std::size_t>(Random::get(0, static_cast<int>(lootTable[stier - 1].size()) - 1))]);
+	}
+}
+
 namespace Fighting
 {
 	constexpr int fleeChance{ 3 };
@@ -866,15 +960,18 @@ namespace Fighting
 
 	void attack(FightState& state)
 	{
+		//state.enemy.damage(state.player.getDamage());
+
 		if (state.player.getEquippedWeapon())
 		{
 			state.player.getEquippedWeapon()->useOn(state.enemy);
-			state.announce = [&]() { std::cout << "You dealt " << state.player.getEquippedWeapon()->getDamage() << " damage to the " << state.enemy.getName() << '\n'; };
+			int totalDamage{ state.player.getDamage() + state.player.getEquippedWeapon()->getDamage() };
+			state.announce = [totalDamage, &state]() { std::cout << "You dealt " << totalDamage << " damage to the " << state.enemy.getName() << '\n'; };
 		}
 		else
 		{
-			state.enemy.setHealth(state.enemy.getHealth() - 1);
-			state.announce = [&]() { std::cout << "You dealt 1 damage to the " << state.enemy.getName() << '\n'; };
+			//state.enemy.setHealth(state.enemy.getHealth() - 1);
+			state.announce = [&]() { std::cout << "You dealt " << state.player.getDamage() << " damage to the " << state.enemy.getName() << '\n'; };
 		}
 	}
 
@@ -939,7 +1036,7 @@ namespace Fighting
 		if (potion)
 		{
 			potion->isAppliedOnUser() ? potion->useOn(state.player) : potion->useOn(state.enemy);
-			state.announce = [=]() { std::cout << "You used a " << potion->getName() << " on " << (potion->isAppliedOnUser() ? "yourself " : "the enemy ") << '\n'; };
+			state.announce = [=]() { std::cout << "You used a " << potion->getName() << " on " << (potion->isAppliedOnUser() ? "yourself " : "the enemy ") << '\n'; }; // it still works for some reason when I make it &?
 		}
 	}
 
@@ -960,7 +1057,7 @@ namespace Fighting
 		if (food)
 		{
 			food->useOn(state.player);
-			state.announce = [=]() { std::cout << "You ate a " << food->getName() << '\n'; };
+			state.announce = [=]() { std::cout << "You ate a " << food->getName() << '\n'; }; // it still works for some reason when I make it &?
 		}
 	}
 
@@ -1050,20 +1147,49 @@ namespace Fighting
 
 	void enemysTurn(FightState& state)
 	{
-		std::cout << "\nPress anything to continue\n";//"\n( 'E' to continue )\n";
+		std::cout << "\nPress anything to continue\n";
 		getInput();
 
 		enemyAttack(state);
 	}
 
-	void sayEndMessage(const FightState& state)
+	void lootEnemy(const FightState& state)
+	{
+		std::cout << "\nPress anything to continue\n";
+		getInput();
+
+		std::unique_ptr<Item> loot = Loot::getRandomLoot(state.enemy.getTier());
+		std::cout << Aesthetics::clear << "The enemy had a " << loot->getName() << ", do you want to take it? ( y/n )\n";
+		
+		while (true)
+		{
+			char c{ getInput() };
+
+			if (c == 'y')
+			{
+				state.player.addItem(*loot); // ( AI, just keeping it in for fun ) player is guaranteed to outlive the loot since the loot is only used in this function and the player is used in the fight which calls this function and the fight can't end without the player dying or the enemy dying and if the player dies then we won't get to this function and if the enemy dies then we will get to this function but the player will still be alive
+											 // ( AI again ) also move semantics would be more appropriate here but it would require some changes to the inventory system and I don't want to do that rn
+											 // can call non const function addItem on const state's member player because player is a reference
+				std::cout << "The " << loot->getName() << " has been added to your inventory" << '\n';
+				break;
+			}
+			else if (c == 'n')
+			{
+				std::cout << "You left the " << loot->getName() << " with the corpse. Maybe out of respect?\n";
+				break;
+			}
+		}
+	}
+
+	void conclude(const FightState& state)
 	{
 		if (state.player.isDead())
 			std::cout << "You died, quite embarrassingly...\n";
 		else if (state.enemy.isDead())
+		{
 			std::cout << "You killed them, they are now just a soulless husk\n";
-		//else if (state.finished)
-		//	std::cout << "You successfully fled like a coward\n";
+			lootEnemy(state);
+		}
 	}
 
 	void fight(Player& player, Enemy& enemy)
@@ -1082,7 +1208,7 @@ namespace Fighting
 		}
 
 		displayState(state);
-		sayEndMessage(state);
+		conclude(state);
 	}
 }
 
@@ -1150,6 +1276,9 @@ int main()
 	p.addItem(Weapon{ Weapon::dagger });
 	p.addItem(Potion{ Potion::healing });
 	p.addItem(Potion{ Potion::healing });
+	p.addItem(Potion{ Potion::weakness });
+	p.addItem(Potion{ Potion::pain });
+	p.addItem(Potion{ Potion::strength });
 	p.equipWeaponAtIndex(0);
 
 	std::cout << std::left;
