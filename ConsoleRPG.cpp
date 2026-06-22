@@ -960,7 +960,7 @@ namespace Fighting
 
 	void attack(FightState& state)
 	{
-		//state.enemy.damage(state.player.getDamage());
+		state.enemy.damage(state.player.getDamage());
 
 		if (state.player.getEquippedWeapon())
 		{
