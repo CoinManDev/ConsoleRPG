@@ -72,6 +72,48 @@ std::ostream& operator<<(std::ostream& out, Aesthetics::Color color)
 	return out << Aesthetics::colors[color];
 }
 
+namespace Keybinds
+{
+	struct Keybind
+	{
+		std::vector<char> keys{};
+	};
+
+	const Keybind up{ { 'W', 'w' } };
+	const Keybind down{ { 'S', 's' } };
+	const Keybind left{ { 'A', 'a' } };
+	const Keybind right{ { 'D', 'd' } };
+	const Keybind inventory{ { 'I', 'i' } };
+	const Keybind select{ { 'E', 'e' } };
+	const Keybind agree{ { 'Y', 'y' } };
+	const Keybind disagree{ { 'N', 'n' } };
+	const Keybind quit{ { 'Q', 'q' } };
+
+	const std::vector<Keybind> movementKeybinds{ up, left, down, right };
+}
+
+//bool operator==(char c, const Keybinds::Keybind& keybind)
+//{
+//	return c == keybind.lowercase || c == keybind.uppercase;
+//}
+
+std::ostream& operator<<(std::ostream& out, const Keybinds::Keybind& keybind)
+{
+	return out << keybind.keys[0];
+}
+
+std::ostream& operator<<(std::ostream& out, const std::vector<Keybinds::Keybind>& keybindCombination)
+{
+	for (const auto& keybind : keybindCombination)
+		out << keybind;
+	return out;
+}
+
+bool operator==(char c, const Keybinds::Keybind& keybind)
+{
+	return std::find(keybind.keys.begin(), keybind.keys.end(), c) != keybind.keys.end();
+}
+
 struct Point
 {
 	int x{};
@@ -521,10 +563,10 @@ public:
 	static_assert(descriptions.size() == max_types);
 
 	inline static const std::array heals{
-		Effect::modifiedHealth(2),
 		Effect::modifiedHealth(4),
 		Effect::modifiedHealth(8),
 		Effect::modifiedHealth(16),
+		Effect::modifiedHealth(32),
 	};
 	static_assert(heals.size() == max_types);
 
@@ -586,6 +628,16 @@ public:
 		else if (const Food* food{ dynamic_cast<const Food*>(&item) })
 			mFood.push_back(*food);
 	}
+
+	void removeItem(const Item& item)
+	{
+		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(&item) })
+			std::erase_if(mWeapons, [&](const auto& weapon) { return &weapon == &item; });
+		else if (const Potion* potion{ dynamic_cast<const Potion*>(&item) })
+			std::erase_if(mPotions, [&](const auto& potion) { return &potion == &item; });
+		else if (const Food* food{ dynamic_cast<const Food*>(&item) })
+			std::erase_if(mFood, [&](const auto& food) { return &food == &item; });
+	}
 };
 
 using namespace std::string_literals;
@@ -596,17 +648,17 @@ public:
 	enum Type
 	{
 		goblin,
-		wizard,
+		exile,
 		knight,
 		ogre,
 
 		max_types,
 	};
 
-	inline static const std::array names{ "goblin"s, "wizard"s, "knight"s, "ogre"s };
+	inline static const std::array names{ "goblin"s, "exile"s, "knight"s, "ogre"s };
 	static_assert(names.size() == max_types);
 
-	constexpr static std::array symbols{ 'G', 'W', 'K', 'O' };
+	constexpr static std::array symbols{ 'G', 'E', 'K', 'O' };
 	static_assert(symbols.size() == max_types);
 
 	inline static const std::array stats{ CreatureBase{ 5, 1 }, CreatureBase{ 10, 2 }, CreatureBase{ 20, 4 }, CreatureBase{ 40, 8 } };
@@ -691,6 +743,12 @@ public:
 char getInput()
 {
 	return static_cast<char>(_getch());
+}
+
+void waitForInput()
+{
+	std::cout << "\nPress anything to continue\n";
+	getInput();
 }
 
 struct Category
@@ -790,7 +848,7 @@ namespace Inventory
 		if (item == player.getEquippedWeapon())
 			std::cout << "\nEquipped\n";
 		else if (dynamic_cast<const Weapon*>(item))
-			std::cout << "\nPress 'E' to equip\n";
+			std::cout << "\nPress " << Keybinds::select << " to equip\n";
 	}
 
 	void clampIndicator(Point& indicator, const std::vector<Category>& categories)
@@ -820,14 +878,11 @@ namespace Inventory
 
 	void moveIndicator(Point& indicator, const std::vector<Category>& categories, char direction)
 	{
-		switch (direction)
-		{
-		case 'w': --indicator.y; break;
-		case 'a': --indicator.x; break;
-		case 's': ++indicator.y; break;
-		case 'd': ++indicator.x; break;
-		default: return;
-		}
+		if (direction == Keybinds::up) --indicator.y;
+		else if (direction == Keybinds::down) ++indicator.y;
+		else if (direction == Keybinds::left) --indicator.x;
+		else if (direction == Keybinds::right) ++indicator.x;
+		else return;
 
 		clampIndicator(indicator, categories);
 	}
@@ -846,16 +901,16 @@ namespace Inventory
 			else
 				display(categories, indicator, player);
 
-			std::cout << "\n( WASD to move cursor, 'q' to quit inventory )\n";
+			std::cout << "\n( " << Keybinds::movementKeybinds << " to move cursor, " << Keybinds::quit << " to quit inventory )\n";
 			char c{ getInput() };
 
-			if (c == 'q')
+			if (c == Keybinds::quit)
 				break;
 
 			if (categories.empty())
 				continue;
 
-			if (c == 'e'&& dynamic_cast<const Weapon*>(getIndicatedItem(categories, indicator)))
+			if (c == Keybinds::select && dynamic_cast<const Weapon*>(getIndicatedItem(categories, indicator)))
 				player.equipWeaponAtIndex(indicator.y);
 			else
 				moveIndicator(indicator, categories, c);
@@ -868,33 +923,6 @@ namespace Inventory
 namespace Loot
 {
 	using LootTable = std::vector<std::vector<std::unique_ptr<Item>>>;
-
-	/*const LootTable lootTable{
-		{ // Tier 1
-			std::make_unique<Weapon>(Weapon::stick),
-			std::make_unique<Potion>(Potion::healing),
-			std::make_unique<Potion>(Potion::pain),
-			std::make_unique<Food>(Food::bread),
-		},
-		{ // Tier 2
-			std::make_unique<Weapon>(Weapon::dagger),
-			std::make_unique<Potion>(Potion::healing),
-			std::make_unique<Potion>(Potion::pain),
-			std::make_unique<Food>(Food::bread_two),
-		},
-		{ // Tier 3
-			std::make_unique<Weapon>(Weapon::sword),
-			std::make_unique<Potion>(Potion::strength),
-			std::make_unique<Potion>(Potion::weakness),
-			std::make_unique<Food>(Food::beef),
-		},
-		{ // Tier 4
-			std::make_unique<Weapon>(Weapon::musket),
-			std::make_unique<Potion>(Potion::strength),
-			std::make_unique<Potion>(Potion::weakness),
-			std::make_unique<Food>(Food::sandvich),
-		},
-	};*/
 	
 	LootTable getLootTable()
 	{
@@ -902,27 +930,39 @@ namespace Loot
 		lootTable.resize(4);
 
 		// Tier 1 loot
-		lootTable[0].push_back(std::make_unique<Weapon>(Weapon::stick));
+		lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
+		lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
+		lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
 		lootTable[0].push_back(std::make_unique<Potion>(Potion::healing));
 		lootTable[0].push_back(std::make_unique<Potion>(Potion::pain));
 		lootTable[0].push_back(std::make_unique<Food>(Food::bread));
 
 		// Tier 2 loot
-		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::dagger));
+		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::sword));
+		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::sword));
+		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::sword));
 		lootTable[1].push_back(std::make_unique<Potion>(Potion::healing));
 		lootTable[1].push_back(std::make_unique<Potion>(Potion::pain));
 		lootTable[1].push_back(std::make_unique<Food>(Food::bread_two));
+		lootTable[1].push_back(std::make_unique<Food>(Food::bread_two));
 
 		// Tier 3 loot
-		lootTable[2].push_back(std::make_unique<Weapon>(Weapon::sword));
+		lootTable[2].push_back(std::make_unique<Weapon>(Weapon::musket));
+		lootTable[2].push_back(std::make_unique<Weapon>(Weapon::musket));
+		lootTable[2].push_back(std::make_unique<Weapon>(Weapon::musket));
 		lootTable[2].push_back(std::make_unique<Potion>(Potion::strength));
 		lootTable[2].push_back(std::make_unique<Potion>(Potion::weakness));
+		lootTable[2].push_back(std::make_unique<Food>(Food::beef));
 		lootTable[2].push_back(std::make_unique<Food>(Food::beef));
 
 		// Tier 4 loot
 		lootTable[3].push_back(std::make_unique<Weapon>(Weapon::musket));
+		lootTable[3].push_back(std::make_unique<Weapon>(Weapon::musket));
 		lootTable[3].push_back(std::make_unique<Potion>(Potion::strength));
 		lootTable[3].push_back(std::make_unique<Potion>(Potion::weakness));
+		lootTable[3].push_back(std::make_unique<Potion>(Potion::strength));
+		lootTable[3].push_back(std::make_unique<Potion>(Potion::weakness));
+		lootTable[3].push_back(std::make_unique<Food>(Food::sandvich));
 		lootTable[3].push_back(std::make_unique<Food>(Food::sandvich));
 
 		return lootTable;
@@ -933,8 +973,8 @@ namespace Loot
 		LootTable lootTable{ getLootTable() };
 
 		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
-		std::size_t stier{ static_cast<std::size_t>(tier) };
-		return std::move(lootTable[stier - 1][static_cast<std::size_t>(Random::get(0, static_cast<int>(lootTable[stier - 1].size()) - 1))]);
+		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
+		return std::move(lootTable[stier][static_cast<std::size_t>(Random::get(0, static_cast<int>(lootTable[stier].size()) - 1))]);
 	}
 }
 
@@ -942,6 +982,8 @@ namespace Fighting
 {
 	constexpr int fleeChance{ 3 };
 	constexpr int displayWidth{ 10 };
+	constexpr int exit{ 1 };
+	constexpr int stay{ 0 };
 
 	struct FightState
 	{
@@ -969,43 +1011,41 @@ namespace Fighting
 			state.announce = [totalDamage, &state]() { std::cout << "You dealt " << totalDamage << " damage to the " << state.enemy.getName() << '\n'; };
 		}
 		else
-		{
-			//state.enemy.setHealth(state.enemy.getHealth() - 1);
 			state.announce = [&]() { std::cout << "You dealt " << state.player.getDamage() << " damage to the " << state.enemy.getName() << '\n'; };
-		}
 	}
 
 	void displayItemUsage(FightState& state, const Category& category, const Point& indicator)
 	{
 		std::cout << Aesthetics::clear << "Choose an item to use:\n\n";
 		Inventory::display({ category }, indicator, state.player);
-		std::cout << "\n( W/S to move between items, 'E' to select, 'Q' to cancel )\n";
+		std::cout << "\n( " << Keybinds::up << '/' << Keybinds::down << " to move between items, " << Keybinds::select << " to select, " << Keybinds::quit << " to cancel )\n";
 	}
 
 	int processInputForItemUsage(FightState& state, const Category& category, Point& indicator, const std::function<void(FightState&, const Item*)>& onItemSelect)
 	{
 		char input{ getInput() };
 
-		if (input == 'e')
+		if (input == Keybinds::select)
 		{
 			const Item* item{ Inventory::getIndicatedItem({ category }, indicator) };
 			if (item)
 			{
 				onItemSelect(state, item);
-				return 1;
+				state.player.removeItem(*item);
+				return exit;
 			}
 
-			return 0;
+			return stay;
 		}
-		else if (input == 'q')
+		else if (input == Keybinds::quit)
 		{
 			state.playersTurn = true;
-			return 1;
+			return exit;
 		}
 		else
 		{
 			Inventory::moveIndicator(indicator, { category }, input);
-			return 0;
+			return stay;
 		}
 	}
 
@@ -1116,11 +1156,8 @@ namespace Fighting
 
 	void moveIndicator(int& indicator, char direction)
 	{
-		switch (direction)
-		{
-		case 'a': --indicator; break;
-		case 'd': ++indicator; break;
-		}
+		if (direction == Keybinds::left) --indicator;
+		else if (direction == Keybinds::right) ++indicator;
 
 		indicator = std::clamp(indicator, 0, static_cast<int>(options.size()) - 1);
 	}
@@ -1135,11 +1172,11 @@ namespace Fighting
 	void playersTurn(FightState& state, int& indicator)
 	{
 		displayOptions(indicator);
-		std::cout << "\n\n( A/D to move between options, 'E' to select )\n";
+		std::cout << "\n\n( " << Keybinds::left << '/' << Keybinds::right << " to move between options, " << Keybinds::select << " to select )\n";
 
 		char c{ getInput() };
 
-		if (c == 'e')
+		if (c == Keybinds::select)
 			doAction(state, indicator);
 		else
 			moveIndicator(indicator, c);
@@ -1147,35 +1184,65 @@ namespace Fighting
 
 	void enemysTurn(FightState& state)
 	{
-		std::cout << "\nPress anything to continue\n";
-		getInput();
-
+		waitForInput();
 		enemyAttack(state);
+	}
+
+	void equipWeaponLoot(const FightState& state, const Weapon* weapon)
+	{
+		std::cout << "Do you want to equip it now? ( " << Keybinds::agree << '/' << Keybinds::disagree << " )\n";
+		while (true)
+		{
+			char input{ getInput() };
+			if (input == Keybinds::agree)
+			{
+				state.player.equipWeaponAtIndex(static_cast<int>(state.player.getWeapons().size()) - 1); // equip the last weapon in the inventory which is the one we just added ( AI suggested this )
+				std::cout << "You equipped the " << weapon->getName() << '\n';
+				break;
+			}
+			else if (input == Keybinds::disagree)
+			{
+				std::cout << "You can equip it whenever you want from your inventory\n";
+				break;
+			}
+		}
+	}
+
+	void takeLoot(const FightState& state, std::unique_ptr<Item> loot)
+	{
+		state.player.addItem(*loot); // ( AI, just keeping it in for fun ) player is guaranteed to outlive the loot since the loot is only used in this function and the player is used in the fight which calls this function and the fight can't end without the player dying or the enemy dying and if the player dies then we won't get to this function and if the enemy dies then we will get to this function but the player will still be alive
+									 // ( AI again ) also move semantics would be more appropriate here but it would require some changes to the inventory system and I don't want to do that rn
+									 // can call non const function addItem on const state's member player because player is a reference
+		std::cout << "The " << loot->getName() << " has been added to your inventory" << '\n';
+
+		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(loot.get()) })
+			equipWeaponLoot(state, weapon);
+	}
+
+	void leaveLoot(std::unique_ptr<Item> loot)
+	{
+		std::cout << "You left the " << loot->getName() << " with the corpse. Maybe out of respect?\n";
 	}
 
 	void lootEnemy(const FightState& state)
 	{
-		std::cout << "\nPress anything to continue\n";
-		getInput();
+		waitForInput();
 
 		std::unique_ptr<Item> loot = Loot::getRandomLoot(state.enemy.getTier());
-		std::cout << Aesthetics::clear << "The enemy had a " << loot->getName() << ", do you want to take it? ( y/n )\n";
+		std::cout << Aesthetics::clear << "The enemy had a " << loot->getName() << ", do you want to take it? ( " << Keybinds::agree << '/' << Keybinds::disagree << " )\n";
 		
 		while (true)
 		{
 			char c{ getInput() };
 
-			if (c == 'y')
+			if (c == Keybinds::agree)
 			{
-				state.player.addItem(*loot); // ( AI, just keeping it in for fun ) player is guaranteed to outlive the loot since the loot is only used in this function and the player is used in the fight which calls this function and the fight can't end without the player dying or the enemy dying and if the player dies then we won't get to this function and if the enemy dies then we will get to this function but the player will still be alive
-											 // ( AI again ) also move semantics would be more appropriate here but it would require some changes to the inventory system and I don't want to do that rn
-											 // can call non const function addItem on const state's member player because player is a reference
-				std::cout << "The " << loot->getName() << " has been added to your inventory" << '\n';
+				takeLoot(state, std::move(loot));
 				break;
 			}
-			else if (c == 'n')
+			else if (c == Keybinds::disagree)
 			{
-				std::cout << "You left the " << loot->getName() << " with the corpse. Maybe out of respect?\n";
+				leaveLoot(std::move(loot));
 				break;
 			}
 		}
@@ -1214,75 +1281,22 @@ namespace Fighting
 
 int main()
 {
-	Map map{ 10, 10 };
+	Map map{ 9, 9 };
 
-	std::cout << map << '\n';
+	Enemy g1{ map, Point{ 4, 1 }, Enemy::goblin };
+	Enemy g2{ map, Point{ 4, 7 }, Enemy::goblin };
+	Enemy g3{ map, Point{ 1, 4 }, Enemy::goblin };
+	Enemy g4{ map, Point{ 7, 4 }, Enemy::goblin };
 
-	Entity e{ map, Point{ 5, 5 }, 'E' };
-
-	std::cout << map << '\n';
-
-	Player p{ map, Point{ 1, 1 } };
-
-	std::cout << map << '\n';
-
-	p.moveTo(p.getPosition() + Directions::down);
-
-	std::cout << map << '\n';
-
-	//Entity e2{ e };
-	//e2.moveTo(Point{ 3, 3 });
-
-	//std::cout << map << '\n';
-
-	//WallBlock block{ map, Point{ 1, 7 }, Point{ 2, 8 } };
-	Block block{ Wall{ map, Point{} }, Point{2, 8}, Point{1, 7} };
-	Block block2{ Wall{ map, Point{} }, Point{ 6, 6 }, Point{ 3, 8 } };
-	Block block3{ Wall{ map, Point{} }, Point{ 8, 0 }, Point{ 9, 1 } };
-
-	Entity e2{ e };
-	e.move(Directions::left);
-
-	std::cout << map << '\n';
-
-	//e2 = p;
-
-	//std::cout << map << '\n';
-
-	Block block4{ Entity{ map, Point{}, 'E' }, Point{ 0, 0 }, Point{ 2, 2 }, Point{ 1, 1 } };
-
-	std::cout << map << '\n';
-
-	Map map2{ 20, 20 };
-
-	Block block5{ Entity{ map2, Point{}, 'E' }, Point{ 0, 0 }, Point{ 10, 10 }, Point{ 1, 1 } };
-
-	std::cout << map2 << '\n';
-
-	Block block6{ Entity{ map2, Point{}, 'E' }, Point{ 1, 1 }, Point{ 9, 11 }, Point{ 1, 1 } };
-
-	std::cout << map2 << '\n';
-
-	std::cout << block6.getEntity(Point{ 1, 1 }).getPosition() << '\n';
-	//std::cout << block6.getEntity(Point{ 2, 2 }).getPosition() << '\n'; SHOULD ASSERT OUT
-	//std::cout << block6.getEntity(Point{ -1, -1 }).getPosition() << '\n'; SHOULD ASSERT OUT
-
-	Enemy enemy{ map, Point{ 0, 7 }, Enemy::goblin };
-	Enemy enemy2{ map, Point{ 8, 8 }, Enemy::knight };
-
-	Weapon weapon{ Weapon::sword };
-	p.addItem(weapon);
-	p.addItem(Weapon{ Weapon::musket });
-	p.addItem(Weapon{ Weapon::dagger });
+	Player p{ map, Point{ 4, 4 } };
+	p.addItem(Weapon{ Weapon::stick });
 	p.addItem(Potion{ Potion::healing });
 	p.addItem(Potion{ Potion::healing });
-	p.addItem(Potion{ Potion::weakness });
-	p.addItem(Potion{ Potion::pain });
-	p.addItem(Potion{ Potion::strength });
 	p.equipWeaponAtIndex(0);
 
 	std::cout << std::left;
 
+	std::cout << map << '\n';
 	while (!p.isDead())
 	{
 		std::cout << "Enter a key: ";
@@ -1290,14 +1304,11 @@ int main()
 		std::cout << Aesthetics::clear << '\n';
 
 		Point dir{};
-		switch (c)
-		{
-		case 'w': dir = Directions::up; break;
-		case 'a': dir = Directions::left; break;
-		case 's': dir = Directions::down; break;
-		case 'd': dir = Directions::right; break;
-		case 'i': Inventory::inventory(p);
-		}
+		if (c == Keybinds::up) dir = Directions::up;
+		else if (c == Keybinds::down) dir = Directions::down;
+		else if (c == Keybinds::left) dir = Directions::left;
+		else if (c == Keybinds::right) dir = Directions::right;
+		else if (c == Keybinds::inventory) Inventory::inventory(p);
 
 		Entity* entity{ map.getEntity(p.getPosition() + dir) };
 		if (!entity)
@@ -1318,7 +1329,6 @@ int main()
 
 	std::cout << "You lost\n";
 
-	getInput();
 	getInput();
 
 	return 0;
