@@ -228,19 +228,19 @@ public:
 class Entity
 {
 private:
-	Map& mMap;
+	Map* mMap;
 	Point mPosition{};
 	char mSymbol{};
 	Aesthetics::Color mColor{};
 	bool active{ true };
 
-	void removeFromMap() { mMap.removeEntity(mPosition, this); }
+	void removeFromMap() { mMap->removeEntity(mPosition, this); }
 
 public:
-	Entity(Map& map, const Point& position, char symbol, Aesthetics::Color color = Aesthetics::white)
+	Entity(Map* map, const Point& position, char symbol, Aesthetics::Color color = Aesthetics::white)
 		: mMap{ map }, mPosition{ position }, mSymbol{ symbol }, mColor{ color }
 	{
-		mMap.addEntity(mPosition, this);
+		mMap->addEntity(mPosition, this);
 	}
 
 	virtual ~Entity()
@@ -248,18 +248,12 @@ public:
 		removeFromMap();
 	}
 
-	Entity(const Entity& other)
-		: Entity{ other.mMap, other.mPosition, other.mSymbol, other.mColor }
-	{
-
-	}
-
-	Entity& operator=(const Entity& other) = delete;
-
-	Map& getMap() const { return mMap; }
+	Map* getMap() const { return mMap; }
 	const Point& getPosition() const { return mPosition; }
 	char getSymbol() const { return mSymbol; }
 	Aesthetics::Color getColor() const { return mColor; }
+
+	void setMap(Map* map) { mMap = map; }
 
 	virtual std::unique_ptr<Entity> clone() const
 	{
@@ -272,11 +266,11 @@ public:
 
 	void moveTo(const Point& to)
 	{
-		if (!mMap.isPositionInBounds(to))
+		if (!mMap->isPositionInBounds(to))
 			return;
 
 		removeFromMap(); // remove first to account for the scenario when mPosition and to is same ( if we added first removeEntity would remove the instance just added as well )
-		mMap.addEntity(to, this);
+		mMap->addEntity(to, this);
 		mPosition = to;
 	}
 
@@ -390,13 +384,13 @@ public:
 class Creature : public Entity, public CreatureBase
 {
 public:
-	Creature(Map& map, const Point& position, char symbol, Aesthetics::Color color, int health, int damage)
+	Creature(Map* map, const Point& position, char symbol, Aesthetics::Color color, int health, int damage)
 		: Entity{ map, position, symbol, color }, CreatureBase{ health, damage }
 	{
 
 	}
 
-	Creature(Map& map, const Point& position, char symbol, Aesthetics::Color color, CreatureBase base)
+	Creature(Map* map, const Point& position, char symbol, Aesthetics::Color color, CreatureBase base)
 		: Entity{ map, position, symbol, color }, CreatureBase{ base }
 	{
 
@@ -603,7 +597,7 @@ private:
 	Inventory mInventory{};
 
 public:
-	Player(Map& map, const Point& position)
+	Player(Map* map, const Point& position)
 		: Creature{ map, position, 'P', Aesthetics::yellow, 10, 0 }
 	{
 
@@ -677,7 +671,7 @@ private:
 	std::string mName{};
 
 public:
-	Enemy(Map& map, const Point& position, Type type)
+	Enemy(Map* map, const Point& position, Type type)
 		: mType{ type }, mName{ names[type] }, Creature{ map, position, symbols[type], Aesthetics::red, stats[type] }
 	{
 
@@ -695,7 +689,7 @@ public:
 class Wall : public Entity
 {
 public:
-	Wall(Map& map, const Point& position)
+	Wall(Map* map, const Point& position)
 		: Entity{ map, position, '#', Aesthetics::magenta }
 	{
 
@@ -715,7 +709,7 @@ private:
 	const DoorPair* mDoorPair;
 
 public:
-	Door(Map& map, const Point& position, const DoorPair* doorPair)
+	Door(Map* map, const Point& position, const DoorPair* doorPair)
 		: Entity{ map, position, '*', Aesthetics::blue }, mDoorPair{ doorPair }
 	{
 
@@ -736,7 +730,7 @@ private:
 	Door second;
 
 public:
-	DoorPair(Map& firstMap, const Point& firstPosition, Map& secondMap, const Point& secondPosition)
+	DoorPair(Map* firstMap, const Point& firstPosition, Map* secondMap, const Point& secondPosition)
 		: first{ firstMap, firstPosition, this }, second{ secondMap, secondPosition, this }
 	{
 
@@ -1327,28 +1321,28 @@ int main()
 {
 	Map map{ 9, 9 };
 
-	Enemy g{ map, Point{ 7, 7 }, Enemy::goblin };
-	Enemy g2{ map, Point{ 1, 4 }, Enemy::goblin };
-	Enemy g3{ map, Point{ 7, 4 }, Enemy::goblin };
-	Enemy g4{ map, Point{ 1, 7 }, Enemy::goblin };
-	Enemy e{ map, Point{ 4, 1 }, Enemy::exile };
+	Enemy g{ &map, Point{ 7, 7 }, Enemy::goblin };
+	Enemy g2{ &map, Point{ 1, 4 }, Enemy::goblin };
+	Enemy g3{ &map, Point{ 7, 4 }, Enemy::goblin };
+	Enemy g4{ &map, Point{ 1, 7 }, Enemy::goblin };
+	Enemy e{ &map, Point{ 4, 1 }, Enemy::exile };
 
 	Map map2{ 9, 9 };
 
-	DoorPair doorPair{ map, Point{ 4, 0 }, map2, Point{ 4, 8 } };
+	DoorPair doorPair{ &map, Point{ 4, 0 }, &map2, Point{ 4, 8 } };
 
-	Wall w{ map, Point{ 3, 0 } };
-	Wall w2{ map, Point{ 5, 0 } };
+	Wall w{ &map, Point{ 3, 0 } };
+	Wall w2{ &map, Point{ 5, 0 } };
 
-	Player* player{ new Player{ map, Point{ 4, 4 } } };
-	player->addItem(Weapon{ Weapon::stick });
-	player->addItem(Potion{ Potion::healing });
-	player->equipWeaponAtIndex(0);
+	Player player{ &map, Point{ 4, 4 } };
+	player.addItem(Weapon{ Weapon::stick });
+	player.addItem(Potion{ Potion::healing });
+	player.equipWeaponAtIndex(0);
 
 	std::cout << std::left;
 
-	std::cout << player->getMap() << '\n';
-	while (!player->isDead())
+	std::cout << *(player.getMap()) << '\n';
+	while (!player.isDead())
 	{
 		std::cout << "Enter a key: ";
 		char c{ getInput() };
@@ -1359,15 +1353,15 @@ int main()
 		else if (c == Keybinds::down) dir = Directions::down;
 		else if (c == Keybinds::left) dir = Directions::left;
 		else if (c == Keybinds::right) dir = Directions::right;
-		else if (c == Keybinds::inventory) Inventory::inventory(*player);
+		else if (c == Keybinds::inventory) Inventory::inventory(player);
 
-		Entity* entity{ player->getMap().getEntity(player->getPosition() + dir)};
+		Entity* entity{ player.getMap()->getEntity(player.getPosition() + dir)};
 		if (!entity)
-			player->move(dir);
+			player.move(dir);
 		else if (Enemy* opponent{ dynamic_cast<Enemy*>(entity) })
 		{
-			std::cout << player->getMap() << '\n';
-			Fighting::fight(*player, *opponent);
+			std::cout << *(player.getMap()) << '\n';
+			Fighting::fight(player, *opponent);
 
 			if (opponent->isDead())
 				opponent->deactivate();
@@ -1382,20 +1376,12 @@ int main()
 			else
 				counterpart = &(door->getDoorPair()->getFirst());
 
-			CreatureBase oldStats{ CreatureBase{ player->getHealth(), player->getDamage() } };
-			Point oldPosition{ player->getPosition() };
-			Player::Inventory oldInventory{ player->getInventory() };
-			delete player;
-			player = new Player{ counterpart->getMap(), counterpart->getPosition() + (door->getPosition() - oldPosition) };
-			player->setInventory(oldInventory);
-			player->setHealth(oldStats.getHealth());
-			player->setDamage(oldStats.getDamage());
+			player.setMap(counterpart->getMap());
+			player.moveTo(counterpart->getPosition() + (door->getPosition() - player.getPosition()));
 		}
 
-		std::cout << player->getMap() << '\n';
+		std::cout << *(player.getMap()) << '\n';
 	}
-
-	delete player;
 
 	std::cout << "You lost\n";
 
