@@ -92,11 +92,6 @@ namespace Keybinds
 	const std::vector<Keybind> movementKeybinds{ up, left, down, right };
 }
 
-//bool operator==(char c, const Keybinds::Keybind& keybind)
-//{
-//	return c == keybind.lowercase || c == keybind.uppercase;
-//}
-
 std::ostream& operator<<(std::ostream& out, const Keybinds::Keybind& keybind)
 {
 	return out << keybind.keys[0];
@@ -261,6 +256,7 @@ public:
 
 	Entity& operator=(const Entity& other) = delete;
 
+	Map& getMap() const { return mMap; }
 	const Point& getPosition() const { return mPosition; }
 	char getSymbol() const { return mSymbol; }
 	Aesthetics::Color getColor() const { return mColor; }
@@ -594,11 +590,17 @@ public:
 
 class Player : public Creature
 {
+public:
+	struct Inventory
+	{
+		std::vector<Weapon> weapons{};
+		std::vector<Potion> potions{};
+		std::vector<Food> food{};
+		std::size_t equippedWeaponIndex{};
+	};
+
 private:
-	std::vector<Weapon> mWeapons{};
-	std::vector<Potion> mPotions{};
-	std::vector<Food> mFood{};
-	std::size_t mEquippedWeaponIndex{};
+	Inventory mInventory{};
 
 public:
 	Player(Map& map, const Point& position)
@@ -612,31 +614,34 @@ public:
 		return std::make_unique<Player>(*this);
 	}
 
-	const std::vector<Weapon>& getWeapons() const { return mWeapons; }
-	const std::vector<Potion>& getPotions() const { return mPotions; }
-	const std::vector<Food>& getFood() const { return mFood; }
+	const std::vector<Weapon>& getWeapons() const { return mInventory.weapons; }
+	const std::vector<Potion>& getPotions() const { return mInventory.potions; }
+	const std::vector<Food>& getFood() const { return mInventory.food; }
 
-	const Weapon* getEquippedWeapon() const { return mWeapons.empty() ? nullptr : &mWeapons[mEquippedWeaponIndex]; }
-	void equipWeaponAtIndex(int index) { mEquippedWeaponIndex = static_cast<std::size_t>(index); }
+	const Weapon* getEquippedWeapon() const { return getWeapons().empty() ? nullptr : &getWeapons()[mInventory.equippedWeaponIndex]; }
+	void equipWeaponAtIndex(int index) { mInventory.equippedWeaponIndex = static_cast<std::size_t>(index); }
+
+	const Inventory& getInventory() const { return mInventory; }
+	void setInventory(const Inventory& inventory) { mInventory = inventory; }
 
 	void addItem(const Item& item)
 	{
 		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(&item) })
-			mWeapons.push_back(*weapon);
+			mInventory.weapons.push_back(*weapon);
 		else if (const Potion* potion{ dynamic_cast<const Potion*>(&item) })
-			mPotions.push_back(*potion);
+			mInventory.potions.push_back(*potion);
 		else if (const Food* food{ dynamic_cast<const Food*>(&item) })
-			mFood.push_back(*food);
+			mInventory.food.push_back(*food);
 	}
 
 	void removeItem(const Item& item)
 	{
 		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(&item) })
-			std::erase_if(mWeapons, [&](const auto& weapon) { return &weapon == &item; });
+			std::erase_if(mInventory.weapons, [&](const auto& weapon) { return &weapon == &item; });
 		else if (const Potion* potion{ dynamic_cast<const Potion*>(&item) })
-			std::erase_if(mPotions, [&](const auto& potion) { return &potion == &item; });
+			std::erase_if(mInventory.potions, [&](const auto& potion) { return &potion == &item; });
 		else if (const Food* food{ dynamic_cast<const Food*>(&item) })
-			std::erase_if(mFood, [&](const auto& food) { return &food == &item; });
+			std::erase_if(mInventory.food, [&](const auto& food) { return &food == &item; });
 	}
 };
 
@@ -700,6 +705,45 @@ public:
 	{
 		return std::make_unique<Wall>(*this);
 	}
+};
+
+class DoorPair;
+
+class Door : public Entity
+{
+private:
+	const DoorPair* mDoorPair;
+
+public:
+	Door(Map& map, const Point& position, const DoorPair* doorPair)
+		: Entity{ map, position, '*', Aesthetics::blue }, mDoorPair{ doorPair }
+	{
+
+	}
+
+	std::unique_ptr<Entity> clone() const override
+	{
+		return std::make_unique<Door>(*this);
+	}
+
+	const DoorPair* getDoorPair() const { return mDoorPair; }
+};
+
+class DoorPair
+{
+private:
+	Door first;
+	Door second;
+
+public:
+	DoorPair(Map& firstMap, const Point& firstPosition, Map& secondMap, const Point& secondPosition)
+		: first{ firstMap, firstPosition, this }, second{ secondMap, secondPosition, this }
+	{
+
+	}
+
+	const Door& getFirst() const { return first; }
+	const Door& getSecond() const { return second; }
 };
 
 class Block
@@ -1283,21 +1327,28 @@ int main()
 {
 	Map map{ 9, 9 };
 
-	Enemy g1{ map, Point{ 4, 1 }, Enemy::goblin };
-	Enemy g2{ map, Point{ 4, 7 }, Enemy::goblin };
-	Enemy g3{ map, Point{ 1, 4 }, Enemy::goblin };
-	Enemy g4{ map, Point{ 7, 4 }, Enemy::goblin };
+	Enemy g{ map, Point{ 7, 7 }, Enemy::goblin };
+	Enemy g2{ map, Point{ 1, 4 }, Enemy::goblin };
+	Enemy g3{ map, Point{ 7, 4 }, Enemy::goblin };
+	Enemy g4{ map, Point{ 1, 7 }, Enemy::goblin };
+	Enemy e{ map, Point{ 4, 1 }, Enemy::exile };
 
-	Player p{ map, Point{ 4, 4 } };
-	p.addItem(Weapon{ Weapon::stick });
-	p.addItem(Potion{ Potion::healing });
-	p.addItem(Potion{ Potion::healing });
-	p.equipWeaponAtIndex(0);
+	Map map2{ 9, 9 };
+
+	DoorPair doorPair{ map, Point{ 4, 0 }, map2, Point{ 4, 8 } };
+
+	Wall w{ map, Point{ 3, 0 } };
+	Wall w2{ map, Point{ 5, 0 } };
+
+	Player* player{ new Player{ map, Point{ 4, 4 } } };
+	player->addItem(Weapon{ Weapon::stick });
+	player->addItem(Potion{ Potion::healing });
+	player->equipWeaponAtIndex(0);
 
 	std::cout << std::left;
 
-	std::cout << map << '\n';
-	while (!p.isDead())
+	std::cout << player->getMap() << '\n';
+	while (!player->isDead())
 	{
 		std::cout << "Enter a key: ";
 		char c{ getInput() };
@@ -1308,24 +1359,43 @@ int main()
 		else if (c == Keybinds::down) dir = Directions::down;
 		else if (c == Keybinds::left) dir = Directions::left;
 		else if (c == Keybinds::right) dir = Directions::right;
-		else if (c == Keybinds::inventory) Inventory::inventory(p);
+		else if (c == Keybinds::inventory) Inventory::inventory(*player);
 
-		Entity* entity{ map.getEntity(p.getPosition() + dir) };
+		Entity* entity{ player->getMap().getEntity(player->getPosition() + dir)};
 		if (!entity)
-			p.move(dir);
+			player->move(dir);
 		else if (Enemy* opponent{ dynamic_cast<Enemy*>(entity) })
 		{
-			std::cout << map << '\n';
-			Fighting::fight(p, *opponent);
+			std::cout << player->getMap() << '\n';
+			Fighting::fight(*player, *opponent);
 
 			if (opponent->isDead())
 				opponent->deactivate();
 
 			continue;
 		}
+		else if (Door* door{ dynamic_cast<Door*>(entity) })
+		{
+			const Door* counterpart{};
+			if (door == &(door->getDoorPair()->getFirst()))
+				counterpart = &(door->getDoorPair()->getSecond());
+			else
+				counterpart = &(door->getDoorPair()->getFirst());
 
-		std::cout << map << '\n';
+			CreatureBase oldStats{ CreatureBase{ player->getHealth(), player->getDamage() } };
+			Point oldPosition{ player->getPosition() };
+			Player::Inventory oldInventory{ player->getInventory() };
+			delete player;
+			player = new Player{ counterpart->getMap(), counterpart->getPosition() + (door->getPosition() - oldPosition) };
+			player->setInventory(oldInventory);
+			player->setHealth(oldStats.getHealth());
+			player->setDamage(oldStats.getDamage());
+		}
+
+		std::cout << player->getMap() << '\n';
 	}
+
+	delete player;
 
 	std::cout << "You lost\n";
 
