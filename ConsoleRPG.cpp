@@ -160,6 +160,9 @@ Point distanceAbs(const Point& p1, const Point& p2)
 
 int sign(int n)
 {
+	if (n == 0)
+		return 0;
+
 	return (n / std::abs(n));
 }
 
@@ -312,7 +315,7 @@ std::ostream& operator<<(std::ostream& out, const Map& map)
 
 class CreatureBase
 {
-private:
+protected:
 	int mHealth{};
 	int mDamage{};
 
@@ -595,6 +598,9 @@ public:
 
 private:
 	Inventory mInventory{};
+	int mXp{};
+	int mRequiredXp{ 50 };
+	int mLevel{};
 
 public:
 	Player(Map* map, const Point& position)
@@ -618,6 +624,8 @@ public:
 	const Inventory& getInventory() const { return mInventory; }
 	void setInventory(const Inventory& inventory) { mInventory = inventory; }
 
+	int getLevel() const { return mLevel; }
+
 	void addItem(const Item& item)
 	{
 		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(&item) })
@@ -636,6 +644,20 @@ public:
 			std::erase_if(mInventory.potions, [&](const auto& potion) { return &potion == &item; });
 		else if (const Food* food{ dynamic_cast<const Food*>(&item) })
 			std::erase_if(mInventory.food, [&](const auto& food) { return &food == &item; });
+	}
+
+	void addXp(int amount)
+	{
+		mXp += amount;
+		while (mXp >= mRequiredXp)
+		{
+			mXp -= mRequiredXp;
+			mRequiredXp *= 2;
+			++mLevel;
+			++mDamage;
+
+			std::cout << "You have leveled up! You are now level " << mLevel << ". Your damage has been increased by 1\n";
+		}
 	}
 };
 
@@ -666,6 +688,8 @@ public:
 	constexpr static std::array tiers{ 1, 2, 3, 4 };
 	static_assert(tiers.size() == max_types);
 
+	constexpr static int baseXp{ 10 };
+
 private:
 	Type mType{};
 	std::string mName{};
@@ -684,6 +708,7 @@ public:
 
 	const std::string& getName() const { return mName; }
 	int getTier() const { return tiers[mType]; }
+	int getXp() const { return baseXp * getTier(); }
 };
 
 class Wall : public Entity
@@ -1294,6 +1319,8 @@ namespace Fighting
 		{
 			std::cout << "You killed them, they are now just a soulless husk\n";
 			lootEnemy(state);
+			state.player.addXp(state.enemy.getXp());
+			waitForInput();
 		}
 	}
 
@@ -1329,6 +1356,9 @@ int main()
 
 	Map map2{ 9, 9 };
 
+	Block b1{ Wall{ &map2, Point{} }, Point{ 0, 4 }, Point{ 3, 4 } };
+	Block b2{ Wall{ &map2, Point{} }, Point{ 5, 4 }, Point{ 8, 4 } };
+
 	DoorPair doorPair{ &map, Point{ 4, 0 }, &map2, Point{ 4, 8 } };
 
 	Wall w{ &map, Point{ 3, 0 } };
@@ -1337,16 +1367,19 @@ int main()
 	Player player{ &map, Point{ 4, 4 } };
 	player.addItem(Weapon{ Weapon::stick });
 	player.addItem(Potion{ Potion::healing });
+	player.addItem(Food{ Food::bread });
 	player.equipWeaponAtIndex(0);
 
 	std::cout << std::left;
 
-	std::cout << *(player.getMap()) << '\n';
 	while (!player.isDead())
 	{
-		std::cout << "Enter a key: ";
-		char c{ getInput() };
 		std::cout << Aesthetics::clear << '\n';
+		std::cout << "You are level " << player.getLevel() << "\n\n";
+		std::cout << *(player.getMap()) << '\n';
+
+		std::cout << "( " << Keybinds::movementKeybinds << " to move, " << Keybinds::inventory << " to open the inventory )\n";
+		char c{ getInput() };
 
 		Point dir{};
 		if (c == Keybinds::up) dir = Directions::up;
@@ -1355,18 +1388,18 @@ int main()
 		else if (c == Keybinds::right) dir = Directions::right;
 		else if (c == Keybinds::inventory) Inventory::inventory(player);
 
+		if (dir == Point{})
+			continue;
+
 		Entity* entity{ player.getMap()->getEntity(player.getPosition() + dir)};
 		if (!entity)
 			player.move(dir);
 		else if (Enemy* opponent{ dynamic_cast<Enemy*>(entity) })
 		{
-			std::cout << *(player.getMap()) << '\n';
 			Fighting::fight(player, *opponent);
 
 			if (opponent->isDead())
 				opponent->deactivate();
-
-			continue;
 		}
 		else if (Door* door{ dynamic_cast<Door*>(entity) })
 		{
@@ -1379,8 +1412,6 @@ int main()
 			player.setMap(counterpart->getMap());
 			player.moveTo(counterpart->getPosition() + (door->getPosition() - player.getPosition()));
 		}
-
-		std::cout << *(player.getMap()) << '\n';
 	}
 
 	std::cout << "You lost\n";
