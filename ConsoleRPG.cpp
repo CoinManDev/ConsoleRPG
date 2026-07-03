@@ -1101,7 +1101,7 @@ namespace Loot
 		return total;
 	}
 
-	std::unique_ptr<Item> getRandomItemFromTier(int tier)
+	std::unique_ptr<Item> getRandomItemFromTier(int tier) // fully AI generated function
 	{
 		assert((tier > 0 && tier <= ssize(lootTableWeights)) && "Invalid tier for loot table");
 		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
