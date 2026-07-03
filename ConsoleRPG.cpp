@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -244,6 +245,12 @@ public:
 		: mMap{ map }, mPosition{ position }, mSymbol{ symbol }, mColor{ color }
 	{
 		mMap->addEntity(mPosition, this);
+	}
+
+	Entity(const Entity& other)
+		: Entity{ other.mMap, other.mPosition, other.mSymbol, other.mColor }
+	{
+		
 	}
 
 	virtual ~Entity()
@@ -717,7 +724,7 @@ public:
 	Wall(Map* map, const Point& position)
 		: Entity{ map, position, '#', Aesthetics::magenta }
 	{
-
+		
 	}
 
 	std::unique_ptr<Entity> clone() const override
@@ -759,6 +766,12 @@ public:
 		: first{ firstMap, firstPosition, this }, second{ secondMap, secondPosition, this }
 	{
 
+	}
+
+	DoorPair(const DoorPair& other)
+		: first{ other.first.getMap(), other.first.getPosition(), this }, second{ other.second.getMap(), other.second.getPosition(), this }
+	{
+	
 	}
 
 	const Door& getFirst() const { return first; }
@@ -986,19 +999,211 @@ namespace Inventory
 namespace Loot
 {
 	using LootTable = std::vector<std::vector<std::unique_ptr<Item>>>;
+
+	/*std::vector<std::vector<std::pair<int, bool>>> lootTableWeights{ // AI suggested calling it weights, I was gonna call them chances
+		{ // Tier 1
+			{ 3, true }, // weight, eligibility
+			{ 2, true },
+			{ 1, true },
+		},
+		{ // Tier 2
+			{ 3, true },
+			{ 2, true },
+			{ 2, true },
+		},
+		{ // Tier 3
+			{ 3, true },
+			{ 2, true },
+			{ 2, true },
+		},
+		{ // Tier 4
+			{ 2, true },
+			{ 4, true },
+			{ 2, true },
+		}, // Weapons / Potions / Food
+	};*/
+
+	template <typename T>
+	struct Loot
+	{
+		T item{};
+		int weight{};
+		bool eligible{ true };
+	};
+
+	std::vector<std::vector<Loot<Weapon>>> weaponLoot{
+		{ // Tier 1
+			Loot{ Weapon{ Weapon::dagger }, 3 },
+		},
+		{ // Tier 2
+			Loot{ Weapon{ Weapon::sword }, 3 },
+		},
+		{ // Tier 3
+			Loot{ Weapon{ Weapon::musket }, 3 },
+		},
+		{ // Tier 4
+			Loot{ Weapon{ Weapon::musket }, 2 },
+		},
+	};
+
+	std::vector<std::vector<Loot<Potion>>> potionLoot{
+		{ // Tier 1
+			Loot{ Potion{ Potion::healing }, 1 },
+			Loot{ Potion{ Potion::healing }, 1 },
+		},
+		{ // Tier 2
+			Loot{ Potion{ Potion::healing }, 1 },
+			Loot{ Potion{ Potion::healing }, 1 },
+		},
+		{ // Tier 3
+			Loot{ Potion{ Potion::strength }, 1 },
+			Loot{ Potion{ Potion::weakness }, 1 },
+		},
+		{ // Tier 4
+			Loot{ Potion{ Potion::strength }, 2 },
+			Loot{ Potion{ Potion::weakness }, 2 },
+		},
+	};
+
+	std::vector<std::vector<Loot<Food>>> foodLoot{
+		{ // Tier 1
+			Loot{ Food{ Food::bread }, 1 },
+		},
+		{ // Tier 2
+			Loot{ Food{ Food::bread_two }, 2 },
+		},
+		{ // Tier 3
+			Loot{ Food{ Food::beef }, 2 },
+		},
+		{ // Tier 4
+			Loot{ Food{ Food::sandvich }, 2 },
+		},
+	};
+
+	int getWeightAt(int tier, int index)
+	{
+		assert((tier > 0 && tier <= ssize(lootTableWeights)) && "Invalid tier for loot table");
+		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
+		assert((index >= 0 && index < ssize(lootTableWeights[stier])) && "Invalid index for loot table");
+		const std::pair<int, bool>& weightPair{ lootTableWeights[stier][static_cast<std::size_t>(index)] };
+		return weightPair.first * static_cast<int>(weightPair.second);
+	}
+
+	int getTotalTierWeight(int tier)
+	{
+		assert((tier > 0 && tier <= ssize(lootTableWeights)) && "Invalid tier for loot table");
+		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
+		//return std::accumulate(lootTableWeights[stier].begin(), lootTableWeights[stier].end(), 0); // AI suggested std::accumulate
+		int total{};
+		for (std::size_t i{}; i < lootTableWeights[stier].size(); ++i)
+			total += getWeightAt(tier, static_cast<int>(i));
+
+		return total;
+	}
+
+	std::unique_ptr<Item> getRandomItemFromTier(int tier)
+	{
+		assert((tier > 0 && tier <= ssize(lootTableWeights)) && "Invalid tier for loot table");
+		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
+		int totalWeight{ getTotalTierWeight(tier) };
+		int chance{ Random::get(1, totalWeight) };
+		for (std::size_t i{}; i < lootTableWeights[stier].size(); ++i)
+		{
+			if (chance > totalWeight - getWeightAt(tier, static_cast<int>(i)))
+			{
+				switch (i)
+				{
+				case 0: // Weapon
+					return std::make_unique<Weapon>(weaponLoot[stier][Random::get(0, static_cast<int>(weaponLoot[stier].size()) - 1)]);
+				case 1: // Potion
+					return std::make_unique<Potion>(potionLoot[stier][Random::get(0, static_cast<int>(potionLoot[stier].size()) - 1)]);
+				case 2: // Food
+					return std::make_unique<Food>(foodLoot[stier][Random::get(0, static_cast<int>(foodLoot[stier].size()) - 1)]);
+				default:
+					assert(false && "Invalid index for loot table");
+					return nullptr;
+				}
+			}
+
+			totalWeight -= getWeightAt(tier, static_cast<int>(i));
+		}
+
+		assert(false && "No item selected from loot table");
+		return nullptr;
+	}
 	
 	LootTable getLootTable()
 	{
 		LootTable lootTable{};
-		lootTable.resize(4);
+		lootTable.resize(lootTableWeights.size());
 
 		// Tier 1 loot
-		lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
-		lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
-		lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
-		lootTable[0].push_back(std::make_unique<Potion>(Potion::healing));
-		lootTable[0].push_back(std::make_unique<Potion>(Potion::pain));
-		lootTable[0].push_back(std::make_unique<Food>(Food::bread));
+		/*//if (chance > tierTotalWeight - lootTableWeights[0][0])
+		if (lootTableWeights[0][0].second)
+		{
+			for (int i{}; i < getWeightAt(1, 0); ++i)
+				lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
+
+			lootTableWeights[0][0].second = false;
+		}
+		//else if (chance > tierTotalWeight - lootTableWeights[0][0] - lootTableWeights[0][1])
+		if (lootTableWeights[0][1].second)
+		{
+			for (int i{}; i < getWeightAt(1, 1); ++i)
+			{
+				lootTable[0].push_back(std::make_unique<Potion>(Potion::healing));
+				lootTable[0].push_back(std::make_unique<Potion>(Potion::pain));
+			}
+
+			lootTableWeights[0][1].second = false;
+		}
+		//else
+		if (lootTableWeights[0][2].second)
+		{
+			for (int i{}; i < getWeightAt(1, 2); ++i)
+				lootTable[0].push_back(std::make_unique<Food>(Food::bread));
+
+			lootTableWeights[0][2].second = false;
+		}
+
+		if (getTotalTierWeight(1) == 0)
+		{
+			for (auto& weightPair : lootTableWeights[0])
+				weightPair.second = true;
+		}*/
+
+		int tierTotalWeight{ getTotalTierWeight(1) };
+		int chance{ Random::get(1, tierTotalWeight) };
+
+		std::pair<int, bool>& tierWeaponsWeight{ lootTableWeights[0][0] };
+		std::pair<int, bool>& tierPotionsWeight{ lootTableWeights[0][1] };
+		std::pair<int, bool>& tierFoodWeight{ lootTableWeights[0][2] };
+
+		if (tierWeaponsWeight.second && chance > tierTotalWeight - tierWeaponsWeight.first)
+		{
+			lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
+
+			tierWeaponsWeight.second = false;
+		}
+		else if (tierPotionsWeight.second && chance > tierTotalWeight - tierWeaponsWeight.first - tierPotionsWeight.first)
+		{
+			lootTable[0].push_back(std::make_unique<Potion>(Potion::healing));
+			lootTable[0].push_back(std::make_unique<Potion>(Potion::pain));
+
+			tierPotionsWeight.second = false;
+		}
+		else if (tierFoodWeight.second)
+		{
+			lootTable[0].push_back(std::make_unique<Food>(Food::bread));
+
+			tierFoodWeight.second = false;
+		}
+
+		if (getTotalTierWeight(1) == 0)
+		{
+			for (auto& weightPair : lootTableWeights[0])
+				weightPair.second = true;
+		}
 
 		// Tier 2 loot
 		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::sword));
@@ -1291,22 +1496,25 @@ namespace Fighting
 	{
 		waitForInput();
 
-		std::unique_ptr<Item> loot = Loot::getRandomLoot(state.enemy.getTier());
-		std::cout << Aesthetics::clear << "The enemy had a " << loot->getName() << ", do you want to take it? ( " << Keybinds::agree << '/' << Keybinds::disagree << " )\n";
-		
-		while (true)
+		for (int i{}; i < state.enemy.getTier(); ++i)
 		{
-			char c{ getInput() };
+			std::unique_ptr<Item> loot = Loot::getRandomLoot(state.enemy.getTier());
+			std::cout << Aesthetics::clear << "The enemy had a " << loot->getName() << ", do you want to take it? ( " << Keybinds::agree << '/' << Keybinds::disagree << " )\n";
 
-			if (c == Keybinds::agree)
+			while (true)
 			{
-				takeLoot(state, std::move(loot));
-				break;
-			}
-			else if (c == Keybinds::disagree)
-			{
-				leaveLoot(std::move(loot));
-				break;
+				char c{ getInput() };
+
+				if (c == Keybinds::agree)
+				{
+					takeLoot(state, std::move(loot));
+					break;
+				}
+				else if (c == Keybinds::disagree)
+				{
+					leaveLoot(std::move(loot));
+					break;
+				}
 			}
 		}
 	}
@@ -1346,23 +1554,34 @@ namespace Fighting
 
 int main()
 {
+	// maps
 	Map map{ 9, 9 };
-
-	Enemy g{ &map, Point{ 7, 7 }, Enemy::goblin };
-	Enemy g2{ &map, Point{ 1, 4 }, Enemy::goblin };
-	Enemy g3{ &map, Point{ 7, 4 }, Enemy::goblin };
-	Enemy g4{ &map, Point{ 1, 7 }, Enemy::goblin };
-	Enemy e{ &map, Point{ 4, 1 }, Enemy::exile };
-
 	Map map2{ 9, 9 };
 
-	Block b1{ Wall{ &map2, Point{} }, Point{ 0, 4 }, Point{ 3, 4 } };
-	Block b2{ Wall{ &map2, Point{} }, Point{ 5, 4 }, Point{ 8, 4 } };
+	// map one
+	std::vector mapOneEnemies{
+		Enemy{ &map, Point{ 7, 7 }, Enemy::goblin },
+		Enemy{ &map, Point{ 1, 4 }, Enemy::goblin },
+		Enemy{ &map, Point{ 7, 4 }, Enemy::goblin },
+		Enemy{ &map, Point{ 1, 7 }, Enemy::goblin },
+		Enemy{ &map, Point{ 4, 1 }, Enemy::exile },
+	};
+	
+	std::vector mapOneWalls{
+		Wall{ &map, Point{ 3, 0 } },
+		Wall{ &map, Point{ 5, 0 } },
+	};
 
-	DoorPair doorPair{ &map, Point{ 4, 0 }, &map2, Point{ 4, 8 } };
+	// map two
+	//std::vector mapTwoBlocks{
+	//	Block{ Wall{ &map2, Point{} }, Point{ 0, 4 }, Point{ 3, 4 } },
+	//	Block{ Wall{ &map2, Point{} }, Point{ 5, 4 }, Point{ 8, 4 } },
+	//};
 
-	Wall w{ &map, Point{ 3, 0 } };
-	Wall w2{ &map, Point{ 5, 0 } };
+	// door pairs
+	std::vector doorPairs{
+		DoorPair{ &map, Point{ 4, 0 }, &map2, Point{ 4, 8 } },
+	};
 
 	Player player{ &map, Point{ 4, 4 } };
 	player.addItem(Weapon{ Weapon::stick });
