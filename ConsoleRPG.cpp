@@ -663,7 +663,7 @@ public:
 			++mLevel;
 			++mDamage;
 
-			std::cout << "You have leveled up! You are now level " << mLevel << ". Your damage has been increased by 1\n";
+			std::cout << "You leveled up! You are now level " << mLevel << ". Your damage has been increased by 1\n";
 		}
 	}
 };
@@ -998,251 +998,110 @@ namespace Inventory
 
 namespace Loot
 {
-	using LootTable = std::vector<std::vector<std::unique_ptr<Item>>>;
+	const Weapon dagger{ Weapon::dagger };
+	const Weapon sword{ Weapon::sword };
+	const Weapon musket{ Weapon::musket };
+	const Potion healing{ Potion::healing };
+	const Potion pain{ Potion::pain };
+	const Potion strength{ Potion::strength };
+	const Potion weakness{ Potion::weakness };
+	const Food bread{ Food::bread };
+	const Food bread_two{ Food::bread_two };
+	const Food beef{ Food::beef };
+	const Food sandvich{ Food::sandvich };
 
-	/*std::vector<std::vector<std::pair<int, bool>>> lootTableWeights{ // AI suggested calling it weights, I was gonna call them chances
-		{ // Tier 1
-			{ 3, true }, // weight, eligibility
-			{ 2, true },
-			{ 1, true },
-		},
-		{ // Tier 2
-			{ 3, true },
-			{ 2, true },
-			{ 2, true },
-		},
-		{ // Tier 3
-			{ 3, true },
-			{ 2, true },
-			{ 2, true },
-		},
-		{ // Tier 4
-			{ 2, true },
-			{ 4, true },
-			{ 2, true },
-		}, // Weapons / Potions / Food
-	};*/
+	//const std::vector<Weapon> weapons{ Weapon::dagger, Weapon::sword, Weapon::musket };
+	//const std::vector<Potion> potions{ Potion::healing, Potion::pain, Potion::strength, Potion::weakness };
+	//const std::vector<Food> food{ Food::bread, Food::bread_two, Food::beef, Food::sandvich };
 
-	template <typename T>
 	struct Loot
 	{
-		T item{};
-		int weight{};
+		const Item* item{};
+		int weight;
 		bool eligible{ true };
 	};
 
-	std::vector<std::vector<Loot<Weapon>>> weaponLoot{
+	std::vector<std::vector<Loot>> lootTable{
 		{ // Tier 1
-			Loot{ Weapon{ Weapon::dagger }, 3 },
+			Loot{ &dagger, 3 },
+			Loot{ &healing, 1 },
+			Loot{ &pain, 1 },
+			Loot{ &bread, 1 },
 		},
 		{ // Tier 2
-			Loot{ Weapon{ Weapon::sword }, 3 },
+			Loot{ &sword, 3 },
+			Loot{ &healing, 1 },
+			Loot{ &pain, 1 },
+			Loot{ &bread_two, 2 },
 		},
 		{ // Tier 3
-			Loot{ Weapon{ Weapon::musket }, 3 },
+			Loot{ &musket, 3 },
+			Loot{ &strength, 1 },
+			Loot{ &weakness, 1 },
+			Loot{ &beef, 2 },
 		},
 		{ // Tier 4
-			Loot{ Weapon{ Weapon::musket }, 2 },
+			Loot{ &musket, 2 },
+			Loot{ &strength, 2 },
+			Loot{ &weakness, 2 },
+			Loot{ &sandvich, 2 },
 		},
 	};
 
-	std::vector<std::vector<Loot<Potion>>> potionLoot{
-		{ // Tier 1
-			Loot{ Potion{ Potion::healing }, 1 },
-			Loot{ Potion{ Potion::healing }, 1 },
-		},
-		{ // Tier 2
-			Loot{ Potion{ Potion::healing }, 1 },
-			Loot{ Potion{ Potion::healing }, 1 },
-		},
-		{ // Tier 3
-			Loot{ Potion{ Potion::strength }, 1 },
-			Loot{ Potion{ Potion::weakness }, 1 },
-		},
-		{ // Tier 4
-			Loot{ Potion{ Potion::strength }, 2 },
-			Loot{ Potion{ Potion::weakness }, 2 },
-		},
-	};
-
-	std::vector<std::vector<Loot<Food>>> foodLoot{
-		{ // Tier 1
-			Loot{ Food{ Food::bread }, 1 },
-		},
-		{ // Tier 2
-			Loot{ Food{ Food::bread_two }, 2 },
-		},
-		{ // Tier 3
-			Loot{ Food{ Food::beef }, 2 },
-		},
-		{ // Tier 4
-			Loot{ Food{ Food::sandvich }, 2 },
-		},
-	};
-
-	int getWeightAt(int tier, int index)
+	bool isTierEligible(int tier)
 	{
-		assert((tier > 0 && tier <= ssize(lootTableWeights)) && "Invalid tier for loot table");
-		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
-		assert((index >= 0 && index < ssize(lootTableWeights[stier])) && "Invalid index for loot table");
-		const std::pair<int, bool>& weightPair{ lootTableWeights[stier][static_cast<std::size_t>(index)] };
-		return weightPair.first * static_cast<int>(weightPair.second);
-	}
-
-	int getTotalTierWeight(int tier)
-	{
-		assert((tier > 0 && tier <= ssize(lootTableWeights)) && "Invalid tier for loot table");
-		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
-		//return std::accumulate(lootTableWeights[stier].begin(), lootTableWeights[stier].end(), 0); // AI suggested std::accumulate
-		int total{};
-		for (std::size_t i{}; i < lootTableWeights[stier].size(); ++i)
-			total += getWeightAt(tier, static_cast<int>(i));
-
-		return total;
-	}
-
-	std::unique_ptr<Item> getRandomItemFromTier(int tier) // fully AI generated function
-	{
-		assert((tier > 0 && tier <= ssize(lootTableWeights)) && "Invalid tier for loot table");
-		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
-		int totalWeight{ getTotalTierWeight(tier) };
-		int chance{ Random::get(1, totalWeight) };
-		for (std::size_t i{}; i < lootTableWeights[stier].size(); ++i)
-		{
-			if (chance > totalWeight - getWeightAt(tier, static_cast<int>(i)))
-			{
-				switch (i)
-				{
-				case 0: // Weapon
-					return std::make_unique<Weapon>(weaponLoot[stier][Random::get(0, static_cast<int>(weaponLoot[stier].size()) - 1)]);
-				case 1: // Potion
-					return std::make_unique<Potion>(potionLoot[stier][Random::get(0, static_cast<int>(potionLoot[stier].size()) - 1)]);
-				case 2: // Food
-					return std::make_unique<Food>(foodLoot[stier][Random::get(0, static_cast<int>(foodLoot[stier].size()) - 1)]);
-				default:
-					assert(false && "Invalid index for loot table");
-					return nullptr;
-				}
-			}
-
-			totalWeight -= getWeightAt(tier, static_cast<int>(i));
-		}
-
-		assert(false && "No item selected from loot table");
-		return nullptr;
-	}
-	
-	LootTable getLootTable()
-	{
-		LootTable lootTable{};
-		lootTable.resize(lootTableWeights.size());
-
-		// Tier 1 loot
-		/*//if (chance > tierTotalWeight - lootTableWeights[0][0])
-		if (lootTableWeights[0][0].second)
-		{
-			for (int i{}; i < getWeightAt(1, 0); ++i)
-				lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
-
-			lootTableWeights[0][0].second = false;
-		}
-		//else if (chance > tierTotalWeight - lootTableWeights[0][0] - lootTableWeights[0][1])
-		if (lootTableWeights[0][1].second)
-		{
-			for (int i{}; i < getWeightAt(1, 1); ++i)
-			{
-				lootTable[0].push_back(std::make_unique<Potion>(Potion::healing));
-				lootTable[0].push_back(std::make_unique<Potion>(Potion::pain));
-			}
-
-			lootTableWeights[0][1].second = false;
-		}
-		//else
-		if (lootTableWeights[0][2].second)
-		{
-			for (int i{}; i < getWeightAt(1, 2); ++i)
-				lootTable[0].push_back(std::make_unique<Food>(Food::bread));
-
-			lootTableWeights[0][2].second = false;
-		}
-
-		if (getTotalTierWeight(1) == 0)
-		{
-			for (auto& weightPair : lootTableWeights[0])
-				weightPair.second = true;
-		}*/
-
-		int tierTotalWeight{ getTotalTierWeight(1) };
-		int chance{ Random::get(1, tierTotalWeight) };
-
-		std::pair<int, bool>& tierWeaponsWeight{ lootTableWeights[0][0] };
-		std::pair<int, bool>& tierPotionsWeight{ lootTableWeights[0][1] };
-		std::pair<int, bool>& tierFoodWeight{ lootTableWeights[0][2] };
-
-		if (tierWeaponsWeight.second && chance > tierTotalWeight - tierWeaponsWeight.first)
-		{
-			lootTable[0].push_back(std::make_unique<Weapon>(Weapon::dagger));
-
-			tierWeaponsWeight.second = false;
-		}
-		else if (tierPotionsWeight.second && chance > tierTotalWeight - tierWeaponsWeight.first - tierPotionsWeight.first)
-		{
-			lootTable[0].push_back(std::make_unique<Potion>(Potion::healing));
-			lootTable[0].push_back(std::make_unique<Potion>(Potion::pain));
-
-			tierPotionsWeight.second = false;
-		}
-		else if (tierFoodWeight.second)
-		{
-			lootTable[0].push_back(std::make_unique<Food>(Food::bread));
-
-			tierFoodWeight.second = false;
-		}
-
-		if (getTotalTierWeight(1) == 0)
-		{
-			for (auto& weightPair : lootTableWeights[0])
-				weightPair.second = true;
-		}
-
-		// Tier 2 loot
-		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::sword));
-		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::sword));
-		lootTable[1].push_back(std::make_unique<Weapon>(Weapon::sword));
-		lootTable[1].push_back(std::make_unique<Potion>(Potion::healing));
-		lootTable[1].push_back(std::make_unique<Potion>(Potion::pain));
-		lootTable[1].push_back(std::make_unique<Food>(Food::bread_two));
-		lootTable[1].push_back(std::make_unique<Food>(Food::bread_two));
-
-		// Tier 3 loot
-		lootTable[2].push_back(std::make_unique<Weapon>(Weapon::musket));
-		lootTable[2].push_back(std::make_unique<Weapon>(Weapon::musket));
-		lootTable[2].push_back(std::make_unique<Weapon>(Weapon::musket));
-		lootTable[2].push_back(std::make_unique<Potion>(Potion::strength));
-		lootTable[2].push_back(std::make_unique<Potion>(Potion::weakness));
-		lootTable[2].push_back(std::make_unique<Food>(Food::beef));
-		lootTable[2].push_back(std::make_unique<Food>(Food::beef));
-
-		// Tier 4 loot
-		lootTable[3].push_back(std::make_unique<Weapon>(Weapon::musket));
-		lootTable[3].push_back(std::make_unique<Weapon>(Weapon::musket));
-		lootTable[3].push_back(std::make_unique<Potion>(Potion::strength));
-		lootTable[3].push_back(std::make_unique<Potion>(Potion::weakness));
-		lootTable[3].push_back(std::make_unique<Potion>(Potion::strength));
-		lootTable[3].push_back(std::make_unique<Potion>(Potion::weakness));
-		lootTable[3].push_back(std::make_unique<Food>(Food::sandvich));
-		lootTable[3].push_back(std::make_unique<Food>(Food::sandvich));
-
-		return lootTable;
-	}
-
-	std::unique_ptr<Item> getRandomLoot(int tier)
-	{
-		LootTable lootTable{ getLootTable() };
-
 		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
 		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
-		return std::move(lootTable[stier][static_cast<std::size_t>(Random::get(0, static_cast<int>(lootTable[stier].size()) - 1))]);
+		for (const auto& loot : lootTable[stier])
+			if (loot.eligible)
+				return true;
+		return false;
+	}
+
+	void resetTierEligibility(int tier)
+	{
+		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
+		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
+		for (auto& loot : lootTable[stier])
+			loot.eligible = true;
+	}
+
+	int totalWeightOfTier(int tier)
+	{
+		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
+		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
+		int totalWeight{};
+		for (const auto& loot : lootTable[stier])
+			totalWeight += (loot.weight * static_cast<int>(loot.eligible));
+		return totalWeight;
+	}
+
+	const Item* getRandomLoot(int tier)
+	{
+		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
+		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
+
+		if (isTierEligible(tier) == false)
+			resetTierEligibility(tier);
+
+		int totalTierWeight{ totalWeightOfTier(tier) };
+		int chance{ Random::get(1, totalTierWeight) };
+		//int weightChance{};
+		int accumulativeWeight{};
+		for (auto& loot : lootTable[stier])
+		{
+			if (!loot.eligible)
+				continue;
+
+			accumulativeWeight += loot.weight;
+			if (chance <= accumulativeWeight)
+			{
+				loot.eligible = false;
+				return loot.item;
+			}
+		}
+
+		return nullptr;
 	}
 }
 
@@ -1476,29 +1335,30 @@ namespace Fighting
 		}
 	}
 
-	void takeLoot(const FightState& state, std::unique_ptr<Item> loot)
+	void takeLoot(const FightState& state, const Item* loot)
 	{
 		state.player.addItem(*loot); // ( AI, just keeping it in for fun ) player is guaranteed to outlive the loot since the loot is only used in this function and the player is used in the fight which calls this function and the fight can't end without the player dying or the enemy dying and if the player dies then we won't get to this function and if the enemy dies then we will get to this function but the player will still be alive
 									 // ( AI again ) also move semantics would be more appropriate here but it would require some changes to the inventory system and I don't want to do that rn
 									 // can call non const function addItem on const state's member player because player is a reference
 		std::cout << "The " << loot->getName() << " has been added to your inventory" << '\n';
 
-		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(loot.get()) })
+		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(loot) })
 			equipWeaponLoot(state, weapon);
 	}
 
-	void leaveLoot(std::unique_ptr<Item> loot)
+	void leaveLoot(const Item* loot)
 	{
 		std::cout << "You left the " << loot->getName() << " with the corpse. Maybe out of respect?\n";
 	}
 
 	void lootEnemy(const FightState& state)
 	{
-		waitForInput();
-
 		for (int i{}; i < state.enemy.getTier(); ++i)
 		{
-			std::unique_ptr<Item> loot = Loot::getRandomLoot(state.enemy.getTier());
+			waitForInput();
+
+			const Item* loot = Loot::getRandomLoot(state.enemy.getTier());
+			assert(loot && "Loot is null");
 			std::cout << Aesthetics::clear << "The enemy had a " << loot->getName() << ", do you want to take it? ( " << Keybinds::agree << '/' << Keybinds::disagree << " )\n";
 
 			while (true)
@@ -1507,12 +1367,12 @@ namespace Fighting
 
 				if (c == Keybinds::agree)
 				{
-					takeLoot(state, std::move(loot));
+					takeLoot(state, loot);
 					break;
 				}
 				else if (c == Keybinds::disagree)
 				{
-					leaveLoot(std::move(loot));
+					leaveLoot(loot);
 					break;
 				}
 			}
@@ -1573,10 +1433,16 @@ int main()
 	};
 
 	// map two
-	//std::vector mapTwoBlocks{
-	//	Block{ Wall{ &map2, Point{} }, Point{ 0, 4 }, Point{ 3, 4 } },
-	//	Block{ Wall{ &map2, Point{} }, Point{ 5, 4 }, Point{ 8, 4 } },
-	//};
+	std::vector mapTwoEnemies{
+		Enemy{ &map2, Point{ 1, 6 }, Enemy::exile },
+		Enemy{ &map2, Point{ 7, 6 }, Enemy::exile },
+		Enemy{ &map2, Point{ 4, 6 }, Enemy::goblin },
+		Enemy{ &map2, Point{ 4, 4 }, Enemy::knight },
+	};
+
+	std::vector<Block> mapTwoBlocks{}; // can't initialize them inside the vector because Block has an std::unique_ptr member
+	mapTwoBlocks.emplace_back(Wall{ &map2, Point{} }, Point{ 0, 4 }, Point{ 3, 4 });
+	mapTwoBlocks.emplace_back(Wall{ &map2, Point{} }, Point{ 5, 4 }, Point{ 8, 4 });
 
 	// door pairs
 	std::vector doorPairs{
