@@ -263,7 +263,12 @@ public:
 	char getSymbol() const { return mSymbol; }
 	Aesthetics::Color getColor() const { return mColor; }
 
-	void setMap(Map* map) { mMap = map; }
+	void setMap(Map* map)
+	{
+		removeFromMap();
+		map->addEntity(mPosition, this);
+		mMap = map;
+	}
 
 	bool isActive() const { return active; }
 	void activate() { active = true; }
@@ -488,10 +493,10 @@ public:
 	static_assert(names.size() == max_types);
 
 	inline static constexpr std::array descriptions{
-		"A red potion and not green for some reason. Increases health by ",
-		"A green potion and not red for some reason. Reduces health by ",
-		"A potion that you can't see the color of because it's in an opaque bottle. Increases damage by ",
-		"It's just beer. Reduces damage by ",
+		"A red potion and not green for some reason. Increases your health by ",
+		"A green potion and not red for some reason. Reduces their health by ",
+		"A potion that you can't see the color of because it's in an opaque bottle. Increases your damage by ",
+		"It's just beer. Reduces their damage by ",
 	};
 	static_assert(descriptions.size() == max_types);
 
@@ -1116,8 +1121,6 @@ namespace Fighting
 			if (item)
 			{
 				onItemSelect(state, item);
-				//std::cout << item << '\n';
-				//std::cout << Inventory::getIndicatedItem({ category }, indicator + Point{ 0, 1 }) << '\n';
 				state.player.removeItem(*item);
 				return exit;
 			}
@@ -1163,7 +1166,7 @@ namespace Fighting
 		if (potion)
 		{
 			potion->isAppliedOnUser() ? potion->useOn(state.player) : potion->useOn(state.enemy);
-			state.announce = [p{ *potion }]() { std::cout << "You used a " << p.getName() << " on " << (p.isAppliedOnUser() ? "yourself " : "the enemy ") << '\n'; }; // it still works for some reason when I make it &?
+			state.announce = [p{ *potion }]() { std::cout << "You used a " << p.getName() << " on " << (p.isAppliedOnUser() ? "yourself " : "the enemy ") << '\n'; };
 		}
 	}
 
@@ -1185,7 +1188,6 @@ namespace Fighting
 		{
 			food->useOn(state.player);
 			state.announce = [f{ *food }]() { std::cout << "You ate a " << f.getName() << '\n'; };
-			//state.announce = [=]() { std::cout << "You ate a " << food->getName() << '\n'; };//food << '\n'; };
 		}
 	}
 
@@ -1390,10 +1392,9 @@ int main()
 		Enemy{ &map, Point{ 1, 7 }, Enemy::goblin },
 		Enemy{ &map, Point{ 4, 1 }, Enemy::exile },
 	};
-	
-	std::vector mapOneWalls{
-		Wall{ &map, Point{ 3, 0 } },
-		Wall{ &map, Point{ 5, 0 } },
+
+	std::vector mapOneBlocks{
+		Block{ Wall{ &map, Point{} }, Point{ 3, 0 }, Point{ 5, 0 }, Point{ 1, 0 } },
 	};
 
 	// map two
@@ -1402,15 +1403,16 @@ int main()
 		Enemy{ &map2, Point{ 7, 6 }, Enemy::exile },
 		Enemy{ &map2, Point{ 4, 2 }, Enemy::exile },
 		Enemy{ &map2, Point{ 4, 6 }, Enemy::goblin },
-		//Enemy{ &map2, Point{ 4, 2 }, Enemy::goblin },
 		Enemy{ &map2, Point{ 4, 4 }, Enemy::knight },
-		//Enemy{ &map2, Point{ 1, 2 }, Enemy::knight },
-		//Enemy{ &map2, Point{ 7, 2 }, Enemy::knight },
 	};
 
 	std::vector mapTwoBlocks{
 		Block{ Wall{ &map2, Point{} }, Point{ 0, 4 }, Point{ 3, 4 } },
 		Block{ Wall{ &map2, Point{} }, Point{ 5, 4 }, Point{ 8, 4 } },
+		Block{ Wall{ &map2, Point{} }, Point{ 3, 8 }, Point{ 5, 8 }, Point{ 1, 0 } },
+		Block{ Wall{ &map2, Point{} }, Point{ 3, 0 }, Point{ 5, 0 }, Point{ 1, 0 } },
+		Block{ Wall{ &map2, Point{} }, Point{ 0, 1 }, Point{ 0, 3 }, Point{ 0, 1 } },
+		Block{ Wall{ &map2, Point{} }, Point{ 8, 1 }, Point{ 8, 3 }, Point{ 0, 1 } },
 	};
 
 	// map three
@@ -1422,6 +1424,7 @@ int main()
 	std::vector mapThreeBlocks{
 		Block{ Wall{ &map3, Point{} }, Point{ 0, 4 }, Point{ 3, 4 } },
 		Block{ Wall{ &map3, Point{} }, Point{ 5, 4 }, Point{ 8, 4 } },
+		Block{ Wall{ &map3, Point{} }, Point{ 3, 8 }, Point{ 5, 8 }, Point{ 1, 0 } },
 	};
 
 	// map four
@@ -1433,6 +1436,7 @@ int main()
 	std::vector mapFourBlocks{
 		Block{ Wall{ &map4, Point{} }, Point{ 4, 0 }, Point{ 4, 3 } },
 		Block{ Wall{ &map4, Point{} }, Point{ 4, 5 }, Point{ 4, 8 } },
+		Block{ Wall{ &map4, Point{} }, Point{ 8, 3 }, Point{ 8, 5 }, Point{ 0, 1 } },
 	};
 
 	// map five
@@ -1444,6 +1448,7 @@ int main()
 	std::vector mapFiveBlocks{
 		Block{ Wall{ &map5, Point{} }, Point{ 4, 0 }, Point{ 4, 3 } },
 		Block{ Wall{ &map5, Point{} }, Point{ 4, 5 }, Point{ 4, 8 } },
+		Block{ Wall{ &map5, Point{} }, Point{ 0, 3 }, Point{ 0, 5 }, Point{ 0, 1 } },
 	};
 
 	// door pairs
@@ -1454,26 +1459,11 @@ int main()
 		DoorPair{ &map2, Point{ 8, 2 }, &map5, Point{ 0, 4 } },
 	};
 
-	Enemy dummy{ &map, Point{ 4, 6 }, Enemy::goblin };
-	dummy.setDamage(0);
-	dummy.setHealth(100);
-
 	Player player{ &map, Point{ 4, 4 } };
 	player.addItem(Weapon{ Weapon::stick });
 	player.addItem(Potion{ Potion::healing });
 	player.addItem(Food{ Food::bread });
 	player.equipWeaponAtIndex(0);
-
-	//player.addItem(Food{ Food::bread });
-	//player.addItem(Food{ Food::bread });
-	//player.addItem(Food{ Food::bread });
-	//player.addItem(Food{ Food::bread });
-	//player.addItem(Food{ Food::bread });
-	//player.addItem(Food{ Food::bread_two });
-	//player.addItem(Food{ Food::bread_two });
-	//player.addItem(Food{ Food::bread_two });
-	//player.addItem(Food{ Food::bread_two });
-	//player.addItem(Food{ Food::bread_two });
 
 	std::cout << std::left;
 
