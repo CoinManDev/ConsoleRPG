@@ -265,11 +265,6 @@ public:
 
 	void setMap(Map* map) { mMap = map; }
 
-	virtual std::unique_ptr<Entity> clone() const
-	{
-		return std::make_unique<Entity>(*this);
-	}
-
 	bool isActive() const { return active; }
 	void activate() { active = true; }
 	void deactivate() { active = false; }
@@ -404,11 +399,6 @@ public:
 		: Entity{ map, position, symbol, color }, CreatureBase{ base }
 	{
 
-	}
-
-	std::unique_ptr<Entity> clone() const override
-	{
-		return std::make_unique<Creature>(*this);
 	}
 };
 
@@ -563,10 +553,10 @@ public:
 	static_assert(descriptions.size() == max_types);
 
 	inline static const std::array heals{
-		Effect::modifiedHealth(4),
-		Effect::modifiedHealth(8),
-		Effect::modifiedHealth(16),
-		Effect::modifiedHealth(32),
+		Effect::modifiedHealth(5),
+		Effect::modifiedHealth(10),
+		Effect::modifiedHealth(20),
+		Effect::modifiedHealth(40),
 	};
 	static_assert(heals.size() == max_types);
 
@@ -616,11 +606,6 @@ public:
 
 	}
 
-	std::unique_ptr<Entity> clone() const override
-	{
-		return std::make_unique<Player>(*this);
-	}
-
 	const std::vector<Weapon>& getWeapons() const { return mInventory.weapons; }
 	const std::vector<Potion>& getPotions() const { return mInventory.potions; }
 	const std::vector<Food>& getFood() const { return mInventory.food; }
@@ -645,7 +630,7 @@ public:
 
 	void removeItem(const Item& item)
 	{
-		if (const Weapon* weapon{ dynamic_cast<const Weapon*>(&item) })
+		if (const Weapon * weapon{dynamic_cast<const Weapon*>(&item)})
 			std::erase_if(mInventory.weapons, [&](const auto& weapon) { return &weapon == &item; });
 		else if (const Potion* potion{ dynamic_cast<const Potion*>(&item) })
 			std::erase_if(mInventory.potions, [&](const auto& potion) { return &potion == &item; });
@@ -708,11 +693,6 @@ public:
 
 	}
 
-	std::unique_ptr<Entity> clone() const override
-	{
-		return std::make_unique<Enemy>(*this);
-	}
-
 	const std::string& getName() const { return mName; }
 	int getTier() const { return tiers[mType]; }
 	int getXp() const { return baseXp * getTier(); }
@@ -725,11 +705,6 @@ public:
 		: Entity{ map, position, '#', Aesthetics::magenta }
 	{
 		
-	}
-
-	std::unique_ptr<Entity> clone() const override
-	{
-		return std::make_unique<Wall>(*this);
 	}
 };
 
@@ -745,11 +720,6 @@ public:
 		: Entity{ map, position, '*', Aesthetics::blue }, mDoorPair{ doorPair }
 	{
 
-	}
-
-	std::unique_ptr<Entity> clone() const override
-	{
-		return std::make_unique<Door>(*this);
 	}
 
 	const DoorPair* getDoorPair() const { return mDoorPair; }
@@ -781,7 +751,7 @@ public:
 class Block
 {
 private:
-	std::vector<std::vector<std::unique_ptr<Entity>>> mBlock{};
+	std::vector<std::vector<std::shared_ptr<Entity>>> mBlock{}; // shared so that block can be used in vectors
 	Point mStart{};
 
 public:
@@ -799,7 +769,7 @@ public:
 			for (int x{}; x <= distAbs.x; x += (1 + gap.x))
 			{
 				auto& ptr{ mBlock[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] };
-				ptr = sample.clone(); // clone method suggested by ChatGPT
+				ptr = std::make_shared<Entity>(sample);
 				ptr->moveTo(start - Point{ x * sign(dist.x), y * sign(dist.y) });
 			}
 		}
@@ -1010,10 +980,6 @@ namespace Loot
 	const Food beef{ Food::beef };
 	const Food sandvich{ Food::sandvich };
 
-	//const std::vector<Weapon> weapons{ Weapon::dagger, Weapon::sword, Weapon::musket };
-	//const std::vector<Potion> potions{ Potion::healing, Potion::pain, Potion::strength, Potion::weakness };
-	//const std::vector<Food> food{ Food::bread, Food::bread_two, Food::beef, Food::sandvich };
-
 	struct Loot
 	{
 		const Item* item{};
@@ -1031,13 +997,12 @@ namespace Loot
 		{ // Tier 2
 			Loot{ &sword, 3 },
 			Loot{ &healing, 1 },
-			Loot{ &pain, 1 },
 			Loot{ &bread_two, 2 },
 		},
 		{ // Tier 3
 			Loot{ &musket, 3 },
 			Loot{ &strength, 1 },
-			Loot{ &weakness, 1 },
+			Loot{ &weakness, 2 },
 			Loot{ &beef, 2 },
 		},
 		{ // Tier 4
@@ -1048,30 +1013,24 @@ namespace Loot
 		},
 	};
 
-	bool isTierEligible(int tier)
+	bool isTierEligible(std::size_t index)
 	{
-		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
-		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
-		for (const auto& loot : lootTable[stier])
+		for (const auto& loot : lootTable[index])
 			if (loot.eligible)
 				return true;
 		return false;
 	}
 
-	void resetTierEligibility(int tier)
+	void resetTierEligibility(std::size_t index)
 	{
-		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
-		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
-		for (auto& loot : lootTable[stier])
+		for (auto& loot : lootTable[index])
 			loot.eligible = true;
 	}
 
-	int totalWeightOfTier(int tier)
+	int totalWeightOfTier(std::size_t index)
 	{
-		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
-		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
 		int totalWeight{};
-		for (const auto& loot : lootTable[stier])
+		for (const auto& loot : lootTable[index])
 			totalWeight += (loot.weight * static_cast<int>(loot.eligible));
 		return totalWeight;
 	}
@@ -1081,12 +1040,11 @@ namespace Loot
 		assert((tier > 0 && tier <= ssize(lootTable)) && "Invalid tier for loot table");
 		std::size_t stier{ static_cast<std::size_t>(tier - 1) };
 
-		if (isTierEligible(tier) == false)
-			resetTierEligibility(tier);
+		if (isTierEligible(stier) == false)
+			resetTierEligibility(stier);
 
-		int totalTierWeight{ totalWeightOfTier(tier) };
+		int totalTierWeight{ totalWeightOfTier(stier) };
 		int chance{ Random::get(1, totalTierWeight) };
-		//int weightChance{};
 		int accumulativeWeight{};
 		for (auto& loot : lootTable[stier])
 		{
@@ -1158,6 +1116,8 @@ namespace Fighting
 			if (item)
 			{
 				onItemSelect(state, item);
+				//std::cout << item << '\n';
+				//std::cout << Inventory::getIndicatedItem({ category }, indicator + Point{ 0, 1 }) << '\n';
 				state.player.removeItem(*item);
 				return exit;
 			}
@@ -1203,7 +1163,7 @@ namespace Fighting
 		if (potion)
 		{
 			potion->isAppliedOnUser() ? potion->useOn(state.player) : potion->useOn(state.enemy);
-			state.announce = [=]() { std::cout << "You used a " << potion->getName() << " on " << (potion->isAppliedOnUser() ? "yourself " : "the enemy ") << '\n'; }; // it still works for some reason when I make it &?
+			state.announce = [p{ *potion }]() { std::cout << "You used a " << p.getName() << " on " << (p.isAppliedOnUser() ? "yourself " : "the enemy ") << '\n'; }; // it still works for some reason when I make it &?
 		}
 	}
 
@@ -1224,7 +1184,8 @@ namespace Fighting
 		if (food)
 		{
 			food->useOn(state.player);
-			state.announce = [=]() { std::cout << "You ate a " << food->getName() << '\n'; }; // it still works for some reason when I make it &?
+			state.announce = [f{ *food }]() { std::cout << "You ate a " << f.getName() << '\n'; };
+			//state.announce = [=]() { std::cout << "You ate a " << food->getName() << '\n'; };//food << '\n'; };
 		}
 	}
 
@@ -1417,6 +1378,9 @@ int main()
 	// maps
 	Map map{ 9, 9 };
 	Map map2{ 9, 9 };
+	Map map3{ 9, 9 };
+	Map map4{ 9, 9 };
+	Map map5{ 9, 9 };
 
 	// map one
 	std::vector mapOneEnemies{
@@ -1436,24 +1400,80 @@ int main()
 	std::vector mapTwoEnemies{
 		Enemy{ &map2, Point{ 1, 6 }, Enemy::exile },
 		Enemy{ &map2, Point{ 7, 6 }, Enemy::exile },
+		Enemy{ &map2, Point{ 4, 2 }, Enemy::exile },
 		Enemy{ &map2, Point{ 4, 6 }, Enemy::goblin },
+		//Enemy{ &map2, Point{ 4, 2 }, Enemy::goblin },
 		Enemy{ &map2, Point{ 4, 4 }, Enemy::knight },
+		//Enemy{ &map2, Point{ 1, 2 }, Enemy::knight },
+		//Enemy{ &map2, Point{ 7, 2 }, Enemy::knight },
 	};
 
-	std::vector<Block> mapTwoBlocks{}; // can't initialize them inside the vector because Block has an std::unique_ptr member
-	mapTwoBlocks.emplace_back(Wall{ &map2, Point{} }, Point{ 0, 4 }, Point{ 3, 4 });
-	mapTwoBlocks.emplace_back(Wall{ &map2, Point{} }, Point{ 5, 4 }, Point{ 8, 4 });
+	std::vector mapTwoBlocks{
+		Block{ Wall{ &map2, Point{} }, Point{ 0, 4 }, Point{ 3, 4 } },
+		Block{ Wall{ &map2, Point{} }, Point{ 5, 4 }, Point{ 8, 4 } },
+	};
+
+	// map three
+	std::vector mapThreeEnemies{
+		Enemy{ &map3, Point{ 4, 4 }, Enemy::knight },
+		Enemy{ &map3, Point{ 4, 1 }, Enemy::ogre },
+	};
+
+	std::vector mapThreeBlocks{
+		Block{ Wall{ &map3, Point{} }, Point{ 0, 4 }, Point{ 3, 4 } },
+		Block{ Wall{ &map3, Point{} }, Point{ 5, 4 }, Point{ 8, 4 } },
+	};
+
+	// map four
+	std::vector mapFourEnemies{
+		Enemy{ &map4, Point{ 4, 4 }, Enemy::knight },
+		Enemy{ &map4, Point{ 1, 4 }, Enemy::ogre },
+	};
+
+	std::vector mapFourBlocks{
+		Block{ Wall{ &map4, Point{} }, Point{ 4, 0 }, Point{ 4, 3 } },
+		Block{ Wall{ &map4, Point{} }, Point{ 4, 5 }, Point{ 4, 8 } },
+	};
+
+	// map five
+	std::vector mapFiveEnemies{
+		Enemy{ &map5, Point{ 4, 4 }, Enemy::knight },
+		Enemy{ &map5, Point{ 7, 4 }, Enemy::ogre },
+	};
+
+	std::vector mapFiveBlocks{
+		Block{ Wall{ &map5, Point{} }, Point{ 4, 0 }, Point{ 4, 3 } },
+		Block{ Wall{ &map5, Point{} }, Point{ 4, 5 }, Point{ 4, 8 } },
+	};
 
 	// door pairs
 	std::vector doorPairs{
 		DoorPair{ &map, Point{ 4, 0 }, &map2, Point{ 4, 8 } },
+		DoorPair{ &map2, Point{ 4, 0 }, &map3, Point{ 4, 8 } },
+		DoorPair{ &map2, Point{ 0, 2 }, &map4, Point{ 8, 4 } },
+		DoorPair{ &map2, Point{ 8, 2 }, &map5, Point{ 0, 4 } },
 	};
+
+	Enemy dummy{ &map, Point{ 4, 6 }, Enemy::goblin };
+	dummy.setDamage(0);
+	dummy.setHealth(100);
 
 	Player player{ &map, Point{ 4, 4 } };
 	player.addItem(Weapon{ Weapon::stick });
 	player.addItem(Potion{ Potion::healing });
 	player.addItem(Food{ Food::bread });
 	player.equipWeaponAtIndex(0);
+
+	//player.addItem(Food{ Food::bread });
+	//player.addItem(Food{ Food::bread });
+	//player.addItem(Food{ Food::bread });
+	//player.addItem(Food{ Food::bread });
+	//player.addItem(Food{ Food::bread });
+	//player.addItem(Food{ Food::bread_two });
+	//player.addItem(Food{ Food::bread_two });
+	//player.addItem(Food{ Food::bread_two });
+	//player.addItem(Food{ Food::bread_two });
+	//player.addItem(Food{ Food::bread_two });
 
 	std::cout << std::left;
 
