@@ -2,31 +2,31 @@
 #include "Random.h"
 #include "Loot.h"
 
-bool Loot::isTierEligible(std::size_t index)
+bool LootTable::isTierEligible(std::size_t index)
 {
-	for (const auto& loot : LootTable::getLootTable()[index])
+	for (const auto& loot : table[index])
 		if (loot.eligible)
 			return true;
 	return false;
 }
 
-void Loot::resetTierEligibility(std::size_t index)
+void LootTable::resetTierEligibility(std::size_t index)
 {
-	for (std::size_t i{}; i < LootTable::getLootTable()[index].size(); ++i)
-		LootTable::setLootEligibility(index, i, true);
+	for (auto& loot : table[index])
+		loot.eligible = true;
 }
 
-int Loot::totalWeightOfTier(std::size_t index)
+int LootTable::totalWeightOfTier(std::size_t index)
 {
 	int totalWeight{};
-	for (const auto& loot : LootTable::getLootTable()[index])
+	for (const auto& loot : table[index])
 		totalWeight += (loot.weight * static_cast<int>(loot.eligible));
 	return totalWeight;
 }
 
-const Item* Loot::getRandomLoot(int tier)
+const Item* LootTable::getRandomLoot(int tier)
 {
-	assert((tier > 0 && tier <= ssize(LootTable::getLootTable())) && "Invalid tier for loot table");
+	assert((tier > 0 && tier <= ssize(table)) && "Invalid tier for loot table");
 	std::size_t stier{ static_cast<std::size_t>(tier - 1) };
 	if (isTierEligible(stier) == false)
 		resetTierEligibility(stier);
@@ -34,17 +34,15 @@ const Item* Loot::getRandomLoot(int tier)
 	int totalTierWeight{ totalWeightOfTier(stier) };
 	int chance{ Random::get(1, totalTierWeight) };
 	int accumulativeWeight{};
-	for (std::size_t i{}; i < LootTable::getLootTable()[stier].size(); ++i)
+	for (auto& loot : table[stier])
 	{
-		const Loot& loot{ LootTable::getLootTable()[stier][i] };
-
 		if (!loot.eligible)
 			continue;
 
 		accumulativeWeight += loot.weight;
 		if (chance <= accumulativeWeight)
 		{
-			LootTable::setLootEligibility(stier, i, false);
+			loot.eligible = false;
 			return loot.item;
 		}
 	}

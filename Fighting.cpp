@@ -229,7 +229,7 @@ void Fighting::lootEnemy(const FightState& state)
 	{
 		waitForInput();
 
-		const Item* loot = Loot::getRandomLoot(state.enemy.getTier());
+		const Item* loot = LootTable::getRandomLoot(state.enemy.getTier());
 		assert(loot && "Loot is null");
 		std::cout << Aesthetics::clear << "The enemy had a " << loot->getName() << ", do you want to take it? ( " << Keybinds::agree << '/' << Keybinds::disagree << " )\n";
 
